@@ -70,7 +70,7 @@
 
     <!-- Melding toevoegen / bewerken -->
     <dialog id="dialoog" class="dialoog">
-        <form id="melding-form">
+        <form id="melding-form" novalidate>
             <div class="dialoog-kop">
                 <div>
                     <h2 id="dialoog-titel">Blokkade melden</h2>
@@ -196,6 +196,24 @@
         <img id="lightbox-img" alt="Foto bij melding">
         <button class="sluit-knop lightbox-sluit" type="button" aria-label="Sluiten">✕</button>
     </dialog>
+
+    <!-- Eigen bevestigingsvenster (vervangt confirm) -->
+    <dialog id="bevestig-dialoog" class="dialoog bevestig-dialoog">
+        <form method="dialog">
+            <div class="bevestig-inhoud">
+                <div id="bevestig-icoon" class="bevestig-icoon">🗑️</div>
+                <h2 id="bevestig-titel"></h2>
+                <p id="bevestig-tekst"></p>
+            </div>
+            <div class="bevestig-knoppen">
+                <button class="btn btn-licht" value="annuleer" id="bevestig-annuleer">Annuleren</button>
+                <button class="btn btn-primary" value="ok" id="bevestig-ok">OK</button>
+            </div>
+        </form>
+    </dialog>
+
+    <!-- Toast-meldingen (vervangt alert); popover zodat ze ook boven open vensters komen -->
+    <div id="toasts" class="toasts" popover="manual" aria-live="polite"></div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>

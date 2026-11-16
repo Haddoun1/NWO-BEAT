@@ -419,6 +419,27 @@ body {
     transform: scale(0.96);
 }
 
+/* Eigen focusrand i.p.v. de zwarte standaardrand van Chrome */
+.btn:focus,
+.sluit-knop:focus,
+.mic-knop:focus,
+.fab:focus,
+.locatie-knop:focus,
+.foto-tegel:focus,
+.toast-sluit:focus {
+    outline: none;
+}
+
+.btn:focus-visible,
+.sluit-knop:focus-visible,
+.mic-knop:focus-visible,
+.fab:focus-visible,
+.locatie-knop:focus-visible,
+.foto-tegel:focus-visible,
+.toast-sluit:focus-visible {
+    box-shadow: 0 0 0 4px rgba(108, 92, 231, 0.35);
+}
+
 .btn-primary {
     background: var(--verloop);
     color: #fff;
@@ -1354,6 +1375,214 @@ textarea {
     position: absolute;
     top: 12px;
     right: 12px;
+}
+
+/* ---------- Toasts ---------- */
+
+.toasts {
+    position: fixed;
+    inset: auto auto 28px 50%;
+    transform: translateX(-50%);
+    z-index: 3000;
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+    overflow: visible;
+    width: min(440px, calc(100% - 32px));
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 10px;
+    pointer-events: none;
+}
+
+.toasts:not(:popover-open):empty {
+    display: none;
+}
+
+.toast {
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 12px 12px 14px;
+    border-radius: 18px;
+    background: var(--tekst);
+    color: #fff;
+    box-shadow: 0 14px 34px rgba(30, 20, 80, 0.35);
+    animation: toast-in 0.4s var(--veer);
+}
+
+.toast.weg {
+    animation: toast-uit 0.3s ease-in forwards;
+}
+
+@keyframes toast-in {
+    from { opacity: 0; transform: translateY(20px) scale(0.92); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes toast-uit {
+    to { opacity: 0; transform: translateY(12px) scale(0.95); }
+}
+
+.toast-icoon {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    border-radius: 12px;
+    font-size: 1.1rem;
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.toast-succes .toast-icoon { background: color-mix(in srgb, var(--actief) 35%, transparent); }
+.toast-fout .toast-icoon { background: color-mix(in srgb, var(--gevaar) 40%, transparent); }
+
+.toast-fout {
+    background: linear-gradient(135deg, #3a1d2e, #23213a);
+}
+
+.toast-tekst {
+    flex: 1;
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 700;
+    line-height: 1.35;
+}
+
+.toast-sluit {
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.2s var(--veer);
+}
+
+.toast-sluit:hover {
+    background: rgba(255, 255, 255, 0.22);
+    transform: rotate(90deg);
+}
+
+/* ---------- Bevestigingsvenster ---------- */
+
+.bevestig-dialoog {
+    width: min(400px, calc(100% - 32px));
+}
+
+.bevestig-inhoud {
+    padding: 28px 24px 8px;
+    text-align: center;
+}
+
+.bevestig-icoon {
+    width: 72px;
+    height: 72px;
+    margin: 0 auto 14px;
+    display: grid;
+    place-items: center;
+    font-size: 2.2rem;
+    border-radius: 24px;
+    background: linear-gradient(135deg, #efeaff 0%, #ffe9f1 100%);
+    animation: wiebel 0.6s var(--veer) 0.15s;
+}
+
+.bevestig-dialoog.gevaar .bevestig-icoon {
+    background: color-mix(in srgb, var(--gevaar) 14%, white);
+}
+
+@keyframes wiebel {
+    0%, 100% { transform: rotate(0); }
+    25% { transform: rotate(-12deg) scale(1.08); }
+    60% { transform: rotate(8deg); }
+}
+
+.bevestig-inhoud h2 {
+    margin: 0 0 6px;
+    font-size: 1.3rem;
+    font-weight: 900;
+}
+
+.bevestig-inhoud p {
+    margin: 0;
+    color: var(--grijs);
+    font-size: 0.92rem;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+
+.bevestig-knoppen {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding: 20px 24px 24px;
+}
+
+.btn-gevaar-vol {
+    background: linear-gradient(135deg, #ff5a7a, var(--gevaar));
+    box-shadow: 0 6px 16px rgba(239, 62, 92, 0.35);
+}
+
+.btn-gevaar-vol:hover {
+    box-shadow: 0 8px 22px rgba(239, 62, 92, 0.5);
+}
+
+/* ---------- Foutmeldingen bij velden ---------- */
+
+.veld-fout {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: -2px 0 0;
+    font-size: 0.8rem;
+    font-weight: 800;
+    color: var(--gevaar);
+    animation: plop-in 0.3s var(--veer);
+}
+
+.veld-fout::before {
+    content: "!";
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--gevaar);
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 900;
+}
+
+input.ongeldig,
+textarea.ongeldig,
+.dicteer-veld.ongeldig input,
+.dicteer-veld.ongeldig textarea {
+    border-color: var(--gevaar);
+    background: color-mix(in srgb, var(--gevaar) 6%, white);
+}
+
+.type-tegels.ongeldig .type-tegel > span {
+    border-color: color-mix(in srgb, var(--gevaar) 45%, white);
+    border-style: dashed;
+}
+
+.schud {
+    animation: schud 0.45s ease-in-out;
+}
+
+@keyframes schud {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-8px); }
+    40% { transform: translateX(7px); }
+    60% { transform: translateX(-5px); }
+    80% { transform: translateX(3px); }
 }
 
 /* ---------- Mobiel ---------- */

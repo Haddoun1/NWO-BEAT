@@ -29,6 +29,68 @@ const MAX_FOTOS = 4;
 const FOTO_MAX_PIXELS = 1280;
 const FOTO_KWALITEIT = 0.75;
 
+// ---------- Eigen meldingen (toasts) en bevestigingen ----------
+
+const toastContainer = document.getElementById("toasts");
+const TOAST_ICONEN = { info: "💡", succes: "✅", fout: "⚠️" };
+
+// Kort berichtje dat vanzelf weer verdwijnt
+function toast(tekst, type = "info", duur = 5000) {
+    const el = document.createElement("div");
+    el.className = `toast toast-${type}`;
+    el.setAttribute("role", type === "fout" ? "alert" : "status");
+    el.innerHTML = `
+        <span class="toast-icoon">${TOAST_ICONEN[type]}</span>
+        <p class="toast-tekst"></p>
+        <button class="toast-sluit" type="button" aria-label="Sluiten">✕</button>`;
+    el.querySelector(".toast-tekst").textContent = tekst;
+
+    const sluit = () => {
+        if (el.classList.contains("weg")) return;
+        el.classList.add("weg");
+        setTimeout(() => {
+            el.remove();
+            if (!toastContainer.children.length) toastContainer.hidePopover?.();
+        }, 300);
+    };
+    el.querySelector(".toast-sluit").addEventListener("click", sluit);
+    setTimeout(sluit, duur);
+
+    toastContainer.append(el);
+    // Opnieuw tonen zodat de toasts boven een eventueel open venster komen
+    if (toastContainer.showPopover) {
+        if (toastContainer.matches(":popover-open")) toastContainer.hidePopover();
+        toastContainer.showPopover();
+    }
+}
+
+const bevestigDialoog = document.getElementById("bevestig-dialoog");
+
+// Eigen vervanger voor confirm(): geeft een Promise<boolean>
+function bevestig({ titel, tekst = "", okTekst = "OK", annuleerTekst = "Annuleren", icoon = "❓", gevaar = false }) {
+    document.getElementById("bevestig-titel").textContent = titel;
+    document.getElementById("bevestig-tekst").textContent = tekst;
+    document.getElementById("bevestig-icoon").textContent = icoon;
+    document.getElementById("bevestig-annuleer").textContent = annuleerTekst;
+    const ok = document.getElementById("bevestig-ok");
+    ok.textContent = okTekst;
+    ok.classList.toggle("btn-gevaar-vol", gevaar);
+    bevestigDialoog.classList.toggle("gevaar", gevaar);
+
+    bevestigDialoog.returnValue = "";
+    bevestigDialoog.showModal();
+    document.getElementById("bevestig-annuleer").focus();
+
+    return new Promise((resolve) => {
+        bevestigDialoog.addEventListener("close", () => resolve(bevestigDialoog.returnValue === "ok"), { once: true });
+    });
+}
+
+// Klik op de achtergrond = annuleren
+bevestigDialoog.addEventListener("click", (e) => {
+    if (e.target === bevestigDialoog) bevestigDialoog.close("annuleer");
+});
+
 // ---------- Kaart ----------
 
 const map = L.map("map", { zoomControl: false }).setView(NEDERLAND, 8);
@@ -193,6 +255,7 @@ function renderFotoPreview() {
         )
         .join("");
     document.getElementById("foto-knoppen").hidden = huidigeFotos.length >= MAX_FOTOS;
+    formGewijzigd = true; // wordt bij openen van het formulier weer op false gezet
 }
 
 async function voegBestandenToe(input) {
@@ -200,13 +263,13 @@ async function voegBestandenToe(input) {
     input.value = "";
     const ruimte = MAX_FOTOS - huidigeFotos.length;
     if (bestanden.length > ruimte) {
-        alert(`Je kunt maximaal ${MAX_FOTOS} foto's toevoegen. Alleen de eerste ${ruimte} worden gebruikt.`);
+        toast(`Je kunt maximaal ${MAX_FOTOS} foto's toevoegen. Alleen de eerste ${ruimte} zijn gebruikt.`, "info");
     }
     for (const bestand of bestanden.slice(0, ruimte)) {
         try {
             huidigeFotos.push(await verkleinFoto(bestand));
         } catch (err) {
-            alert(err.message);
+            toast(err.message, "fout");
         }
     }
     renderFotoPreview();
@@ -254,10 +317,12 @@ document.getElementById("btn-camera").addEventListener("click", async () => {
     } catch (err) {
         console.error(err);
         const geweigerd = err.name === "NotAllowedError";
-        alert(
+        toast(
             geweigerd
                 ? "Geen toegang tot de camera. Geef toestemming in je browser (icoon links in de adresbalk) en probeer opnieuw."
-                : "Er is geen camera gevonden of de camera is in gebruik. Je kunt wel een foto uploaden."
+                : "Er is geen camera gevonden of de camera is in gebruik. Je kunt wel een foto uploaden.",
+            "fout",
+            8000
         );
     }
 });
@@ -427,19 +492,93 @@ function openFormulier(latlng, melding = null) {
         melding && (melding.straal || melding.omleiding || melding.contact || melding.gemeldDoor)
     );
 
+    wisFouten();
+    formGewijzigd = false;
+
     map.closePopup();
     dialoog.showModal();
 }
+
+// ---------- Eigen formuliercontrole (i.p.v. Chrome-ballonnetjes) ----------
+
+let formGewijzigd = false;
+
+function wisFouten() {
+    form.querySelectorAll(".veld-fout").forEach((el) => el.remove());
+    form.querySelectorAll(".ongeldig").forEach((el) => el.classList.remove("ongeldig"));
+}
+
+function toonVeldFout(veld, tekst) {
+    // Bij radioknoppen/tegels de hele groep markeren, anders het veld zelf
+    const houder = veld.closest(".type-tegels, .ernst-keuze") || veld.closest(".dicteer-veld") || veld;
+    houder.classList.add("ongeldig");
+    const fout = document.createElement("p");
+    fout.className = "veld-fout";
+    fout.textContent = tekst;
+    houder.insertAdjacentElement("afterend", fout);
+    return houder;
+}
+
+function controleerFormulier(data) {
+    wisFouten();
+    const fouten = [];
+    if (!data.type) fouten.push([form.querySelector('input[name="type"]'), "Kies wat er aan de hand is."]);
+    if (!data.titel?.trim()) fouten.push([form.elements.titel, "Geef de melding een korte titel."]);
+    if (!data.start) fouten.push([form.elements.start, "Vul in vanaf wanneer de blokkade geldt."]);
+    else if (data.eind && new Date(data.eind) < new Date(data.start)) {
+        fouten.push([form.elements.eind, "Het einde moet na het begin liggen."]);
+    }
+
+    fouten.forEach(([veld, tekst]) => toonVeldFout(veld, tekst));
+    if (fouten.length) {
+        const eerste = form.querySelector(".ongeldig");
+        eerste.scrollIntoView({ behavior: "smooth", block: "center" });
+        // Schudden als visuele hint
+        eerste.classList.remove("schud");
+        void eerste.offsetWidth;
+        eerste.classList.add("schud");
+        if (fouten[0][0].type !== "radio") fouten[0][0].focus({ preventScroll: true });
+    }
+    return fouten.length === 0;
+}
+
+// Foutmelding weghalen zodra je het veld aanpast; bijhouden of er iets gewijzigd is
+form.addEventListener("input", (e) => {
+    formGewijzigd = true;
+    const houder = e.target.closest(".ongeldig") || (e.target.classList.contains("ongeldig") && e.target);
+    if (houder) {
+        houder.classList.remove("ongeldig");
+        if (houder.nextElementSibling?.classList.contains("veld-fout")) houder.nextElementSibling.remove();
+    }
+});
+
+// Sluiten met niet-opgeslagen wijzigingen: eerst vragen
+async function probeerFormulierTeSluiten() {
+    if (formGewijzigd) {
+        const weggooien = await bevestig({
+            titel: "Wijzigingen weggooien?",
+            tekst: "Je hebt dingen ingevuld die nog niet zijn opgeslagen.",
+            okTekst: "Weggooien",
+            annuleerTekst: "Verder invullen",
+            icoon: "📝",
+            gevaar: true,
+        });
+        if (!weggooien) return;
+    }
+    dialoog.close();
+}
+
+// Escape in het formulier
+dialoog.addEventListener("cancel", (e) => {
+    e.preventDefault();
+    probeerFormulierTeSluiten();
+});
 
 form.addEventListener("submit", (e) => {
     e.preventDefault();
     const data = Object.fromEntries(new FormData(form));
 
-    if (data.eind && new Date(data.eind) < new Date(data.start)) {
-        form.elements.eind.setCustomValidity("Einde moet na het begin liggen.");
-        form.elements.eind.reportValidity();
-        return;
-    }
+    if (!controleerFormulier(data)) return;
 
     const nu = new Date().toISOString();
     const melding = {
@@ -469,18 +608,18 @@ form.addEventListener("submit", (e) => {
 
     if (!bewaarMeldingen()) {
         meldingen = vorige;
-        alert("Opslaan mislukt: de opslag in deze browser is vol. Verwijder een paar foto's of oude meldingen en probeer het opnieuw.");
+        toast("Opslaan mislukt: de opslag in deze browser is vol. Verwijder een paar foto's of oude meldingen en probeer het opnieuw.", "fout", 8000);
         return;
     }
 
     dialoog.close();
     render();
     markers.get(melding.id)?.openPopup();
+    toast(bewerkId ? "Melding bijgewerkt" : "Melding geplaatst — bedankt!", "succes", 3000);
 });
 
-form.elements.eind.addEventListener("input", (e) => e.target.setCustomValidity(""));
-document.getElementById("btn-annuleer").addEventListener("click", () => dialoog.close());
-document.getElementById("btn-sluit").addEventListener("click", () => dialoog.close());
+document.getElementById("btn-annuleer").addEventListener("click", probeerFormulierTeSluiten);
+document.getElementById("btn-sluit").addEventListener("click", probeerFormulierTeSluiten);
 
 // ---------- Inspreken (spraak naar tekst) ----------
 // Gebruikt de spraakherkenning van de browser (Chrome, Edge, Safari). Firefox ondersteunt dit niet.
@@ -672,11 +811,21 @@ document.addEventListener(
 
         if (knop.dataset.actie === "bewerk") {
             openFormulier(L.latLng(melding.lat, melding.lng), melding);
-        } else if (knop.dataset.actie === "verwijder" && confirm(`Melding "${melding.titel}" verwijderen?`)) {
-            meldingen = meldingen.filter((m) => m.id !== melding.id);
-            bewaarMeldingen();
-            map.closePopup();
-            render();
+        } else if (knop.dataset.actie === "verwijder") {
+            bevestig({
+                titel: "Melding verwijderen?",
+                tekst: `"${melding.titel}" wordt definitief verwijderd. Dit kun je niet ongedaan maken.`,
+                okTekst: "Ja, verwijderen",
+                icoon: "🗑️",
+                gevaar: true,
+            }).then((ja) => {
+                if (!ja) return;
+                meldingen = meldingen.filter((m) => m.id !== melding.id);
+                bewaarMeldingen();
+                map.closePopup();
+                render();
+                toast("Melding verwijderd", "succes", 3000);
+            });
         }
     },
     true
@@ -751,13 +900,13 @@ function locatieFout(err) {
         navigator.geolocation.clearWatch(locatieWatchId);
         locatieWatchId = null;
         btnLocatie.classList.remove("actief");
-        alert(foutTeksten[err.code] || "Je locatie kon niet bepaald worden.");
+        toast(foutTeksten[err.code] || "Je locatie kon niet bepaald worden.", "fout", 8000);
     }
 }
 
 btnLocatie.addEventListener("click", () => {
     if (!navigator.geolocation) {
-        alert("Je browser ondersteunt geen locatiebepaling.");
+        toast("Je browser ondersteunt geen locatiebepaling.", "fout");
         return;
     }
     // Al bekend: alleen terug naar jezelf
@@ -787,7 +936,7 @@ document.getElementById("zoek-form").addEventListener("submit", async (e) => {
         const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=nl&q=${encodeURIComponent(zoekterm)}`;
         const resultaten = await (await fetch(url, { headers: { "Accept-Language": "nl" } })).json();
         if (!resultaten.length) {
-            alert("Geen locatie gevonden.");
+            toast(`Geen plek gevonden voor "${zoekterm}". Probeer een andere schrijfwijze.`, "info");
             return;
         }
         const { lat, lon, boundingbox, display_name } = resultaten[0];
@@ -796,7 +945,7 @@ document.getElementById("zoek-form").addEventListener("submit", async (e) => {
         L.popup().setLatLng([lat, lon]).setContent(escapeHtml(display_name)).openOn(map);
     } catch (err) {
         console.error(err);
-        alert("Zoeken mislukt. Controleer je internetverbinding.");
+        toast("Zoeken mislukt. Controleer je internetverbinding.", "fout");
     }
 });
 
