@@ -18,8 +18,8 @@ const TYPES = {
 
 const ERNST = {
     laag: { label: "Hinder", kleur: "#f5b400" },
-    middel: { label: "Beperkt", kleur: "#ff7a2f" },
-    hoog: { label: "Dicht", kleur: "#ef3e5c" },
+    middel: { label: "Beperkt", kleur: "#ff6631" },
+    hoog: { label: "Dicht", kleur: "#e5294a" },
 };
 
 const STATUS_LABEL = { actief: "Actief", gepland: "Gepland", verlopen: "Verlopen" };
