@@ -38,9 +38,7 @@
                     <label class="chip chip-actief"><input type="checkbox" name="status" value="actief" checked><span><i class="stip"></i>Actief</span></label>
                     <label class="chip chip-gepland"><input type="checkbox" name="status" value="gepland" checked><span><i class="stip"></i>Gepland</span></label>
                     <label class="chip chip-verlopen"><input type="checkbox" name="status" value="verlopen"><span><i class="stip"></i>Verlopen</span></label>
-                </div>
-                <div id="type-filter" class="chips chips-scroll" role="radiogroup" aria-label="Type"></div>
-            </section>
+                </div>            </section>
 
             <h2 class="lijst-titel">Meldingen <span id="aantal" class="aantal">0</span></h2>
             <ul id="lijst" class="lijst"></ul>
@@ -49,7 +47,67 @@
                 <p><strong>Alles rustig hier!</strong><br>Klik op de kaart om een blokkade te melden.</p>
             </div>
         </aside>
+
+        <!-- Route plannen en volgen -->
+        <section id="route-paneel" class="kaart-blok paneel route-paneel" aria-label="Route" hidden>
+            <div class="route-kop">
+                <h2>🧭 Route</h2>
+                <button class="sluit-knop" type="button" id="btn-route-sluit" aria-label="Route sluiten">✕</button>
+            </div>
+
+            <form id="route-form" class="route-form" novalidate>
+                <div class="route-velden">
+                    <label class="route-veld">
+                        <span class="route-stip route-stip-van" aria-hidden="true"></span>
+                        <input id="route-van" placeholder="📍 Mijn locatie" aria-label="Vertrekpunt (leeg = mijn locatie)" autocomplete="off">
+                    </label>
+                    <label class="route-veld">
+                        <span class="route-stip route-stip-naar" aria-hidden="true"></span>
+                        <input id="route-naar" placeholder="Waar wil je heen?" aria-label="Bestemming" autocomplete="off">
+                    </label>
+                    <button id="btn-route-wissel" class="route-wissel" type="button" aria-label="Vertrek en bestemming omdraaien" title="Omdraaien">⇅</button>
+                </div>
+                <div class="chips" role="radiogroup" aria-label="Vervoer">
+                    <label class="chip"><input type="radio" name="vervoer" value="auto" checked><span>🚗 Auto</span></label>
+                    <label class="chip"><input type="radio" name="vervoer" value="fiets"><span>🚲 Fiets</span></label>
+                    <label class="chip"><input type="radio" name="vervoer" value="lopen"><span>🚶 Lopen</span></label>
+                </div>
+                <button class="btn btn-primary route-plan-knop" type="submit">Route zoeken</button>
+            </form>
+
+            <div id="route-resultaat" class="route-resultaat" hidden>
+                <div class="route-samenvatting">
+                    <strong id="route-tijd"></strong>
+                    <span id="route-afstand"></span>
+                    <span id="route-aankomst" class="route-aankomst"></span>
+                </div>
+                <div id="route-waarschuwing"></div>
+
+                <div id="nav-stap" class="nav-stap" hidden>
+                    <span id="nav-pijl" class="nav-pijl"></span>
+                    <div>
+                        <strong id="nav-afstand"></strong>
+                        <span id="nav-tekst"></span>
+                    </div>
+                </div>
+
+                <div class="route-acties">
+                    <button id="btn-volgen" class="btn btn-primary" type="button">▶ Route volgen</button>
+                    <button id="btn-geluid" class="btn btn-licht" type="button" aria-pressed="true" title="Gesproken aanwijzingen">🔊</button>
+                </div>
+
+                <ol id="route-stappen" class="route-stappen"></ol>
+            </div>
+        </section>
     </div>
+
+    <button id="btn-route" class="locatie-knop route-knop" type="button" aria-label="Route zoeken" title="Route zoeken">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+            <circle cx="6" cy="19" r="2.5" fill="currentColor"/>
+            <path d="M18 2.5a3.5 3.5 0 0 0-3.5 3.5c0 2.6 3.5 6 3.5 6s3.5-3.4 3.5-6A3.5 3.5 0 0 0 18 2.5Z" fill="currentColor"/>
+            <path d="M8.5 19H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="0.1 3.6"/>
+        </svg>
+    </button>
 
     <button id="btn-locatie" class="locatie-knop" type="button" aria-label="Toon mijn locatie" title="Toon mijn locatie">
         <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">

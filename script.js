@@ -194,6 +194,7 @@ function popupHtml(m) {
                 ${regel("Gemeld door", m.gemeldDoor)}
             </dl>
             <div class="popup-knoppen">
+                <button class="btn btn-klein btn-licht" data-actie="route" data-id="${m.id}">🧭 Route</button>
                 <button class="btn btn-klein btn-licht" data-actie="bewerk" data-id="${m.id}">✏️ Bewerken</button>
                 <button class="btn btn-klein btn-gevaar" data-actie="verwijder" data-id="${m.id}">🗑️ Verwijderen</button>
             </div>
@@ -364,13 +365,6 @@ lightbox.addEventListener("click", () => lightbox.close());
 
 // ---------- Filters ----------
 
-// Type-chips in de zijbalk
-document.getElementById("type-filter").innerHTML =
-    `<label class="chip"><input type="radio" name="filter-type" value="" checked><span>✨ Alles</span></label>` +
-    Object.entries(TYPES)
-        .map(([waarde, t]) => `<label class="chip"><input type="radio" name="filter-type" value="${waarde}"><span>${t.icoon} ${t.label}</span></label>`)
-        .join("");
-
 // Type-tegels in het formulier
 document.getElementById("type-keuze").innerHTML = Object.entries(TYPES)
     .map(
@@ -382,10 +376,8 @@ document.getElementById("type-keuze").innerHTML = Object.entries(TYPES)
     )
     .join("");
 
-function actieveFilters() {
-    const statussen = [...document.querySelectorAll('input[name="status"]:checked')].map((el) => el.value);
-    const type = document.querySelector('input[name="filter-type"]:checked')?.value || "";
-    return { statussen, type };
+function actieveStatussen() {
+    return [...document.querySelectorAll('input[name="status"]:checked')].map((el) => el.value);
 }
 
 document.querySelector(".filters").addEventListener("change", render);
@@ -398,9 +390,9 @@ function render() {
     meldingLaag.clearLayers();
     markers.clear();
 
-    const { statussen, type } = actieveFilters();
+    const statussen = actieveStatussen();
     const zichtbaar = meldingen
-        .filter((m) => statussen.includes(statusVan(m)) && (!type || m.type === type))
+        .filter((m) => statussen.includes(statusVan(m)))
         .sort((a, b) => new Date(a.start) - new Date(b.start));
 
     for (const m of zichtbaar) {
@@ -420,6 +412,7 @@ function render() {
     }
 
     renderLijst(zichtbaar);
+    routeBlokkadesBijwerken();
 }
 
 function renderLijst(zichtbaar) {
@@ -775,8 +768,15 @@ map.on("click", (e) => {
         return;
     }
     const inhoud = document.createElement("div");
-    inhoud.innerHTML = `<button class="btn btn-primary btn-klein" type="button">📍 Blokkade hier melden</button>`;
-    inhoud.querySelector("button").addEventListener("click", () => openFormulier(e.latlng));
+    inhoud.className = "popup-knoppen-stapel";
+    inhoud.innerHTML = `
+        <button class="btn btn-primary btn-klein" type="button" data-kies="melden">📍 Blokkade hier melden</button>
+        <button class="btn btn-licht btn-klein" type="button" data-kies="route">🧭 Route hierheen</button>`;
+    inhoud.querySelector('[data-kies="melden"]').addEventListener("click", () => openFormulier(e.latlng));
+    inhoud.querySelector('[data-kies="route"]').addEventListener("click", () => {
+        map.closePopup();
+        routeNaar(e.latlng, "Gekozen punt op de kaart");
+    });
     L.popup().setLatLng(e.latlng).setContent(inhoud).openOn(map);
 });
 
@@ -787,7 +787,14 @@ function zetPlaatsModus(aan) {
     document.body.classList.toggle("plaats-modus", aan);
 }
 
-document.getElementById("btn-nieuw").addEventListener("click", () => zetPlaatsModus(true));
+// Melden-knop: normaal een plek op de kaart kiezen, tijdens het volgen van een route direct "hier melden"
+const btnNieuw = document.getElementById("btn-nieuw");
+btnNieuw.addEventListener("click", () => (volgen ? openSnelMelding() : zetPlaatsModus(true)));
+
+function zetMeldKnop(hier) {
+    btnNieuw.querySelector(".fab-tekst").textContent = hier ? "Hier melden" : "Melden";
+    btnNieuw.setAttribute("aria-label", hier ? "Blokkade melden op je huidige locatie" : "Blokkade melden");
+}
 document.getElementById("btn-annuleer-plaats").addEventListener("click", () => zetPlaatsModus(false));
 document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") zetPlaatsModus(false);
@@ -809,7 +816,10 @@ document.addEventListener(
         const melding = meldingen.find((m) => m.id === knop.dataset.id);
         if (!melding) return;
 
-        if (knop.dataset.actie === "bewerk") {
+        if (knop.dataset.actie === "route") {
+            map.closePopup();
+            routeNaar(L.latLng(melding.lat, melding.lng), melding.titel);
+        } else if (knop.dataset.actie === "bewerk") {
             openFormulier(L.latLng(melding.lat, melding.lng), melding);
         } else if (knop.dataset.actie === "verwijder") {
             bevestig({
@@ -886,6 +896,9 @@ function locatieGevonden(pos) {
         centreerBijEersteFix = false;
         map.setView(mijnLocatie, Math.max(map.getZoom(), 16));
     }
+
+    locatieWachtenden.splice(0).forEach((w) => w.resolve(mijnLocatie));
+    if (volgen) volgUpdate(accuracy);
 }
 
 function locatieFout(err) {
@@ -901,7 +914,35 @@ function locatieFout(err) {
         locatieWatchId = null;
         btnLocatie.classList.remove("actief");
         toast(foutTeksten[err.code] || "Je locatie kon niet bepaald worden.", "fout", 8000);
+        locatieWachtenden.splice(0).forEach((w) => w.reject(err));
     }
+}
+
+// Wie op een (eerste) locatie wacht, bijv. de routeplanner
+const locatieWachtenden = [];
+
+function startLocatie(centreer) {
+    if (locatieWatchId !== null) return; // loopt al
+    btnLocatie.classList.add("zoeken");
+    centreerBijEersteFix = centreer;
+    locatieWatchId = navigator.geolocation.watchPosition(locatieGevonden, locatieFout, {
+        enableHighAccuracy: true,
+        maximumAge: 5_000,
+        timeout: 20_000,
+    });
+}
+
+/** Geeft je locatie terug; start zo nodig de locatiebepaling. */
+function vraagLocatie() {
+    if (!navigator.geolocation) {
+        toast("Je browser ondersteunt geen locatiebepaling.", "fout");
+        return Promise.reject(new Error("geen geolocatie"));
+    }
+    if (mijnLocatie && locatieWatchId !== null) return Promise.resolve(mijnLocatie);
+    return new Promise((resolve, reject) => {
+        locatieWachtenden.push({ resolve, reject });
+        startLocatie(false);
+    });
 }
 
 btnLocatie.addEventListener("click", () => {
@@ -909,23 +950,23 @@ btnLocatie.addEventListener("click", () => {
         toast("Je browser ondersteunt geen locatiebepaling.", "fout");
         return;
     }
-    // Al bekend: alleen terug naar jezelf
+    // Al bekend: alleen terug naar jezelf (en tijdens het volgen de kaart weer laten meebewegen)
     if (mijnLocatie) {
-        map.setView(mijnLocatie, Math.max(map.getZoom(), 16));
+        if (volgen) volgKaartMee = true;
+        map.setView(mijnLocatie, Math.max(map.getZoom(), volgen ? 17 : 16));
         return;
     }
-    if (locatieWatchId !== null) return; // al aan het zoeken
-
-    btnLocatie.classList.add("zoeken");
-    centreerBijEersteFix = true;
-    locatieWatchId = navigator.geolocation.watchPosition(locatieGevonden, locatieFout, {
-        enableHighAccuracy: true,
-        maximumAge: 10_000,
-        timeout: 20_000,
-    });
+    startLocatie(true);
 });
 
 // ---------- Adres zoeken (Nominatim / OpenStreetMap) ----------
+
+/** Zoekt een plek; geeft het eerste resultaat terug of null. Gooit bij netwerkfouten. */
+async function zoekPlek(zoekterm) {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=nl&q=${encodeURIComponent(zoekterm)}`;
+    const resultaten = await (await fetch(url, { headers: { "Accept-Language": "nl" } })).json();
+    return resultaten[0] || null;
+}
 
 document.getElementById("zoek-form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -933,21 +974,769 @@ document.getElementById("zoek-form").addEventListener("submit", async (e) => {
     if (!zoekterm) return;
 
     try {
-        const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=nl&q=${encodeURIComponent(zoekterm)}`;
-        const resultaten = await (await fetch(url, { headers: { "Accept-Language": "nl" } })).json();
-        if (!resultaten.length) {
+        const plek = await zoekPlek(zoekterm);
+        if (!plek) {
             toast(`Geen plek gevonden voor "${zoekterm}". Probeer een andere schrijfwijze.`, "info");
             return;
         }
-        const { lat, lon, boundingbox, display_name } = resultaten[0];
+        const { lat, lon, boundingbox, display_name } = plek;
         const [zuid, noord, west, oost] = boundingbox.map(Number);
         map.fitBounds([[zuid, west], [noord, oost]], { maxZoom: 17 });
-        L.popup().setLatLng([lat, lon]).setContent(escapeHtml(display_name)).openOn(map);
+
+        const inhoud = document.createElement("div");
+        inhoud.className = "popup-knoppen-stapel";
+        inhoud.innerHTML = `<p>${escapeHtml(display_name)}</p>
+            <button class="btn btn-primary btn-klein" type="button">🧭 Route hierheen</button>`;
+        inhoud.querySelector("button").addEventListener("click", () => {
+            map.closePopup();
+            routeNaar(L.latLng(lat, lon), display_name.split(",")[0]);
+        });
+        L.popup().setLatLng([lat, lon]).setContent(inhoud).openOn(map);
     } catch (err) {
         console.error(err);
         toast("Zoeken mislukt. Controleer je internetverbinding.", "fout");
     }
 });
+
+// ---------- Route plannen en volgen ----------
+// Routes komen van de gratis OSRM-server van OpenStreetMap Duitsland (auto, fiets, lopen).
+
+const ROUTE_PROFIELEN = { auto: "routed-car", fiets: "routed-bike", lopen: "routed-foot" };
+const NU_DREMPEL = { auto: 80, fiets: 40, lopen: 20 }; // vanaf hoeveel meter "nu afslaan" gezegd wordt
+
+const btnRoute = document.getElementById("btn-route");
+const routePaneel = document.getElementById("route-paneel");
+const meldPaneel = document.querySelector(".paneel:not(.route-paneel)");
+const routeForm = document.getElementById("route-form");
+const routePlanKnop = routeForm.querySelector(".route-plan-knop");
+const routeVanInput = document.getElementById("route-van");
+const routeNaarInput = document.getElementById("route-naar");
+const routeResultaat = document.getElementById("route-resultaat");
+const routeWaarschuwing = document.getElementById("route-waarschuwing");
+const routeStappenLijst = document.getElementById("route-stappen");
+const navStap = document.getElementById("nav-stap");
+const btnVolgen = document.getElementById("btn-volgen");
+const btnGeluid = document.getElementById("btn-geluid");
+const routeLaag = L.layerGroup().addTo(map);
+
+// Gekozen punten: { latlng, label }. Zolang de tekst in het veld gelijk is aan label, gebruiken we latlng.
+const routePunten = { van: null, naar: null };
+let routeOpties = []; // berekende routes, beste eerst
+let actieveRoute = null;
+let routeBezig = false;
+
+let volgen = false;
+let volgKaartMee = true;
+let geluidAan = true;
+let huidigeStap = -1;
+let nuGezegd = false;
+let laatsteHerberekening = 0;
+let schermSlot = null;
+const gewaarschuwd = new Set();
+
+// --- Teksten en opmaak ---
+
+const RICHTINGEN = {
+    uturn: ["Keer om", "↶"],
+    "sharp right": ["Sla scherp rechtsaf", "↘"],
+    right: ["Sla rechtsaf", "→"],
+    "slight right": ["Houd rechts aan", "↗"],
+    straight: ["Ga rechtdoor", "↑"],
+    "slight left": ["Houd links aan", "↖"],
+    left: ["Sla linksaf", "←"],
+    "sharp left": ["Sla scherp linksaf", "↙"],
+};
+const RANGTELWOORDEN = ["", "eerste", "tweede", "derde", "vierde", "vijfde", "zesde", "zevende", "achtste"];
+
+/** Zet een OSRM-stap om in een Nederlandse aanwijzing met pijl. */
+function instructie(stap) {
+    const { type, modifier = "straight", exit } = stap.maneuver;
+    const weg = stap.name || stap.ref || "";
+    const naar = weg ? ` naar ${weg}` : "";
+    const [actie, pijl] = RICHTINGEN[modifier] || RICHTINGEN.straight;
+    const links = modifier.includes("left");
+
+    switch (type) {
+        case "depart":
+            return { tekst: weg ? `Vertrek via ${weg}` : "Vertrek", pijl: "●" };
+        case "arrive":
+            return { tekst: "Je bent op je bestemming", pijl: "🏁" };
+        case "roundabout":
+        case "rotary":
+            return {
+                tekst: exit ? `Neem op de rotonde de ${RANGTELWOORDEN[exit] || exit + "e"} afslag${naar}` : `Ga de rotonde op${naar}`,
+                pijl: "⟳",
+            };
+        case "roundabout turn":
+            return { tekst: `${actie} op de rotonde${naar}`, pijl };
+        case "exit roundabout":
+        case "exit rotary":
+            return { tekst: `Verlaat de rotonde${naar}`, pijl };
+        case "on ramp":
+            return { tekst: `Neem de oprit${naar}`, pijl };
+        case "off ramp":
+            return { tekst: `Neem de afrit${naar}`, pijl };
+        case "fork":
+            return { tekst: `Houd ${links ? "links" : "rechts"} aan bij de splitsing${naar}`, pijl: links ? "↖" : "↗" };
+        case "end of road":
+            return { tekst: `Sla aan het einde van de weg ${links ? "linksaf" : "rechtsaf"}${naar}`, pijl: links ? "←" : "→" };
+        case "merge":
+            return { tekst: `Voeg in${naar}`, pijl };
+        case "new name":
+        case "continue":
+            if (modifier === "straight") return { tekst: weg ? `Ga verder op ${weg}` : "Ga rechtdoor", pijl };
+            return { tekst: `${actie}${naar}`, pijl };
+        default:
+            return { tekst: `${actie}${naar}`, pijl };
+    }
+}
+
+function formatAfstand(meter) {
+    if (meter < 1000) return `${Math.max(10, Math.round(meter / 10) * 10)} m`;
+    return `${(meter / 1000).toLocaleString("nl-NL", { maximumFractionDigits: meter < 10_000 ? 1 : 0 })} km`;
+}
+
+function spreekAfstand(meter) {
+    if (meter < 1000) return `${Math.max(10, Math.round(meter / 10) * 10)} meter`;
+    return `${(meter / 1000).toLocaleString("nl-NL", { maximumFractionDigits: 1 })} kilometer`;
+}
+
+function formatDuur(seconden) {
+    const minuten = Math.max(1, Math.round(seconden / 60));
+    if (minuten < 60) return `${minuten} min`;
+    return `${Math.floor(minuten / 60)} u ${minuten % 60} min`;
+}
+
+function toonSamenvatting(afstand, duur) {
+    document.getElementById("route-tijd").textContent = formatDuur(duur);
+    document.getElementById("route-afstand").textContent = formatAfstand(afstand);
+    const aankomst = new Date(Date.now() + duur * 1000);
+    document.getElementById("route-aankomst").textContent =
+        `aankomst ${aankomst.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}`;
+}
+
+// --- Rekenen met routes ---
+
+function afstandM([lat1, lng1], [lat2, lng2]) {
+    return L.latLng(lat1, lng1).distanceTo([lat2, lng2]);
+}
+
+/** Maakt van een OSRM-route iets waar we makkelijk mee kunnen rekenen. */
+function verrijkRoute(r) {
+    const coords = r.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+    const cum = [0];
+    for (let i = 1; i < coords.length; i++) cum.push(cum[i - 1] + afstandM(coords[i - 1], coords[i]));
+    const schaal = cum.at(-1) > 0 ? r.distance / cum.at(-1) : 1;
+
+    const stappen = [];
+    let positie = 0;
+    let keerpunten = 0;
+    r.legs.forEach((leg, li) => {
+        // Bij een tussenpunt (omleiding) kan de route omkeren: dat melden we als aanwijzing
+        if (li > 0) {
+            const voor = r.legs[li - 1].steps.at(-1).maneuver.bearing_before;
+            const na = leg.steps[0].maneuver.bearing_after;
+            const verschil = Math.abs(((na - voor + 540) % 360) - 180);
+            if (verschil > 150) {
+                keerpunten++;
+                stappen.push({
+                    tekst: "Keer om",
+                    pijl: "↶",
+                    afstand: 0,
+                    positie,
+                    locatie: L.latLng(leg.steps[0].maneuver.location[1], leg.steps[0].maneuver.location[0]),
+                });
+            }
+        }
+        for (const s of leg.steps) {
+            const tussenpunt =
+                (s.maneuver.type === "arrive" && li < r.legs.length - 1) || (s.maneuver.type === "depart" && li > 0);
+            if (!tussenpunt) {
+                stappen.push({
+                    ...instructie(s),
+                    afstand: s.distance,
+                    positie,
+                    locatie: L.latLng(s.maneuver.location[1], s.maneuver.location[0]),
+                });
+            }
+            positie += s.distance;
+        }
+    });
+
+    return { afstand: r.distance, duur: r.duration, coords, cum, schaal, stappen, keerpunten, blokkades: [], omleiding: false };
+}
+
+/** Kortste afstand van een punt tot de route, en waar op de route (meters vanaf de start). */
+function puntOpRoute(p, route) {
+    const { coords, cum } = route;
+    const M = 111_320; // meter per breedtegraad
+    const k = Math.cos((p.lat * Math.PI) / 180);
+    let beste = { afstand: Infinity, positie: 0, index: 0 };
+    if (coords.length === 1) return { afstand: p.distanceTo(coords[0]), positie: 0, index: 0 };
+
+    for (let i = 0; i < coords.length - 1; i++) {
+        const ax = (coords[i][1] - p.lng) * M * k;
+        const ay = (coords[i][0] - p.lat) * M;
+        const dx = (coords[i + 1][1] - p.lng) * M * k - ax;
+        const dy = (coords[i + 1][0] - p.lat) * M - ay;
+        const lengte2 = dx * dx + dy * dy;
+        const t = lengte2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / lengte2)) : 0;
+        const afstand = Math.hypot(ax + t * dx, ay + t * dy);
+        if (afstand < beste.afstand) {
+            beste = { afstand, positie: (cum[i] + t * (cum[i + 1] - cum[i])) * route.schaal, index: i };
+        }
+    }
+    return beste;
+}
+
+const isDicht = (b) => b.melding.ernst === "hoog" && statusVan(b.melding) === "actief";
+
+/** Actieve blokkades (en die binnen 2 uur beginnen) die op of vlak naast de route liggen. */
+function blokkadesOpRoute(route) {
+    const nu = new Date();
+    // Tijdens het volgen: wat achter je ligt (of precies waar je staat) is niet meer relevant
+    const vanaf = volgen && mijnLocatie ? puntOpRoute(mijnLocatie, route).positie + 30 : -Infinity;
+    return meldingen
+        .filter((m) => {
+            const status = statusVan(m, nu);
+            return status === "actief" || (status === "gepland" && new Date(m.start) - nu < 2 * 3600_000);
+        })
+        .map((m) => ({ melding: m, ...puntOpRoute(L.latLng(m.lat, m.lng), route) }))
+        .filter((b) => b.afstand <= (Number(b.melding.straal) || 0) + 25 && b.positie > vanaf)
+        .sort((a, b) => a.positie - b.positie);
+}
+
+// Afsluitingen wegen zwaar, andere blokkades tellen als 10 minuten extra, omkeren als 15 minuten
+function routeScore(r) {
+    return r.blokkades.filter(isDicht).length * 1e6 + r.blokkades.length * 600 + r.keerpunten * 900 + r.duur;
+}
+
+async function haalRoutes(punten, profiel) {
+    const coords = punten.map((p) => `${p.lng.toFixed(6)},${p.lat.toFixed(6)}`).join(";");
+    const url =
+        `https://routing.openstreetmap.de/${profiel}/route/v1/driving/${coords}` +
+        `?overview=full&geometries=geojson&steps=true&alternatives=${punten.length === 2}`;
+    const antwoord = await fetch(url);
+    if (!antwoord.ok) throw new Error(`Routeserver gaf ${antwoord.status}`);
+    const data = await antwoord.json();
+    return data.code === "Ok" ? data.routes.map(verrijkRoute) : [];
+}
+
+/**
+ * OSRM kan geen gebieden vermijden. Daarom proberen we een omleiding via tussenpunten
+ * links en rechts van de afsluiting.
+ */
+async function zoekOmleiding(route, profiel, van, naar) {
+    const afsluiting = route.blokkades.find(isDicht);
+    const m = afsluiting.melding;
+    const a = route.coords[Math.max(0, afsluiting.index - 3)];
+    const b = route.coords[Math.min(route.coords.length - 1, afsluiting.index + 4)];
+    const k = Math.cos((m.lat * Math.PI) / 180);
+    let dx = (b[1] - a[1]) * k;
+    let dy = b[0] - a[0];
+    const lengte = Math.hypot(dx, dy) || 1;
+    dx /= lengte;
+    dy /= lengte;
+
+    const basis = Math.max((Number(m.straal) || 0) * 1.5, 250);
+    const tussenpunten = [];
+    for (const factor of [1, 3]) {
+        for (const kant of [1, -1]) {
+            const graden = (basis * factor * kant) / 111_320;
+            tussenpunten.push(L.latLng(m.lat + dx * graden, m.lng - (dy * graden) / k));
+        }
+    }
+    const resultaten = await Promise.allSettled(tussenpunten.map((t) => haalRoutes([van, t, naar], profiel)));
+    return resultaten.flatMap((r) => (r.status === "fulfilled" ? r.value : [])).map((r) => ({ ...r, omleiding: true }));
+}
+
+/**
+ * Een tussenpunt in een zijstraat geeft soms een onnodig lusje (heen en weer door een blok).
+ * Vind zo'n lus: twee punten die dicht bij elkaar liggen, maar ver uit elkaar langs de route.
+ */
+function vindLus(route) {
+    const { coords, cum } = route;
+    for (let i = 0; i < coords.length; i++) {
+        for (let j = Math.min(coords.length - 1, i + 400); j > i; j--) {
+            const langs = cum[j] - cum[i];
+            if (langs < 150) break;
+            const recht = afstandM(coords[i], coords[j]);
+            if (recht < 40 && langs > 4 * recht) return [coords[i], coords[j]];
+        }
+    }
+    return null;
+}
+
+async function zonderLus(route, profiel, van, naar) {
+    const lus = vindLus(route);
+    if (!lus) return null;
+    const [nieuw] = await haalRoutes([van, L.latLng(lus[0]), L.latLng(lus[1]), naar], profiel);
+    return nieuw ? { ...nieuw, omleiding: true } : null;
+}
+
+function gebruikersFout(tekst) {
+    return Object.assign(new Error(tekst), { gebruikersTekst: tekst });
+}
+
+/** Zoekt de coördinaten bij het van- of naar-veld. */
+async function bepaalPunt(veld, input) {
+    const tekst = input.value.trim();
+    const gekozen = routePunten[veld];
+    if (gekozen && gekozen.label === tekst) return gekozen.latlng;
+
+    if (!tekst) {
+        if (veld === "van") return vraagLocatie(); // leeg vertrekpunt = mijn locatie
+        input.focus();
+        throw gebruikersFout("Waar wil je heen? Vul een bestemming in of kies een punt op de kaart.");
+    }
+    const plek = await zoekPlek(tekst);
+    if (!plek) {
+        input.focus();
+        throw gebruikersFout(`Geen plek gevonden voor "${tekst}". Probeer een andere schrijfwijze.`);
+    }
+    const latlng = L.latLng(plek.lat, plek.lon);
+    routePunten[veld] = { latlng, label: tekst };
+    return latlng;
+}
+
+const gekozenVervoer = () => routeForm.querySelector('input[name="vervoer"]:checked').value;
+
+async function planRoute({ vanaf = null, stil = false } = {}) {
+    if (routeBezig) return;
+    routeBezig = true;
+    routePlanKnop.disabled = true;
+    routePlanKnop.textContent = "Route zoeken…";
+
+    try {
+        const van = vanaf || (await bepaalPunt("van", routeVanInput));
+        const naar = await bepaalPunt("naar", routeNaarInput);
+        const profiel = ROUTE_PROFIELEN[gekozenVervoer()];
+
+        let routes = await haalRoutes([van, naar], profiel);
+        if (!routes.length) throw gebruikersFout("Er is geen route gevonden tussen deze punten.");
+        routes.forEach((r) => (r.blokkades = blokkadesOpRoute(r)));
+
+        // Gaan alle routes door een afsluiting? Probeer er omheen te rijden.
+        if (routes.every((r) => r.blokkades.some(isDicht))) {
+            const snelste = routes[0];
+            const omleidingen = await zoekOmleiding(snelste, profiel, van, naar).catch(() => []);
+            for (const o of omleidingen) {
+                o.blokkades = blokkadesOpRoute(o);
+                const dubbel = routes.some((r) => Math.abs(r.afstand - o.afstand) < r.afstand * 0.01);
+                if (!dubbel && o.duur < snelste.duur * 3) routes.push(o);
+            }
+
+            // De beste omleidingen ontdoen van lusjes
+            routes.sort((a, b) => routeScore(a) - routeScore(b));
+            const metLus = routes.filter((r) => r.omleiding).slice(0, 2);
+            const opgeschoond = await Promise.all(metLus.map((r) => zonderLus(r, profiel, van, naar).catch(() => null)));
+            opgeschoond.forEach((o, i) => {
+                if (!o) return;
+                o.blokkades = blokkadesOpRoute(o);
+                // Beter dan het origineel? Dan vervangt hij die.
+                if (routeScore(o) < routeScore(metLus[i])) routes[routes.indexOf(metLus[i])] = o;
+            });
+        }
+
+        routes.sort((a, b) => routeScore(a) - routeScore(b));
+        routeOpties = routes.slice(0, 3);
+        kiesRoute(0, { zoom: !stil });
+    } catch (err) {
+        if (err.gebruikersTekst) {
+            toast(err.gebruikersTekst, "info");
+        } else if (err?.PERMISSION_DENIED === 1 || err.message === "geen geolocatie") {
+            // Melding over de locatie is al getoond
+            routeVanInput.focus();
+        } else {
+            console.error(err);
+            toast("De route kon niet berekend worden. Controleer je internetverbinding en probeer opnieuw.", "fout");
+        }
+    } finally {
+        routeBezig = false;
+        routePlanKnop.disabled = false;
+        routePlanKnop.textContent = "Route zoeken";
+    }
+}
+
+// --- Tekenen en tonen ---
+
+function kiesRoute(index, { zoom = true } = {}) {
+    actieveRoute = routeOpties[index];
+    huidigeStap = -1;
+    tekenRoutes();
+    toonRouteInfo();
+    if (zoom) {
+        const opties =
+            innerWidth > 760
+                ? { paddingTopLeft: [410, 40], paddingBottomRight: [100, 40] }
+                : { paddingTopLeft: [20, 90], paddingBottomRight: [70, routePaneel.offsetHeight + 24] };
+        map.fitBounds(L.latLngBounds(actieveRoute.coords), opties);
+    }
+    if (volgen) volgUpdate();
+}
+
+function tekenRoutes() {
+    routeLaag.clearLayers();
+    routeOpties.forEach((r, i) => {
+        if (r === actieveRoute) return;
+        L.polyline(r.coords, { color: "#8d9bbb", weight: 7, opacity: 0.75, bubblingMouseEvents: false })
+            .bindTooltip(`${formatDuur(r.duur)} · ${formatAfstand(r.afstand)}`, { sticky: true })
+            .on("click", () => kiesRoute(i, { zoom: false }))
+            .addTo(routeLaag);
+    });
+
+    const r = actieveRoute;
+    const kleur = r.blokkades.some(isDicht) ? "#e5294a" : "#0342df";
+    L.polyline(r.coords, { color: "#fff", weight: 12, interactive: false }).addTo(routeLaag);
+    L.polyline(r.coords, { color: kleur, weight: 7, interactive: false }).addTo(routeLaag);
+
+    L.circleMarker(r.coords[0], {
+        radius: 7, color: "#fff", weight: 3, fillColor: "#051736", fillOpacity: 1, interactive: false,
+    }).addTo(routeLaag);
+    L.marker(r.coords.at(-1), {
+        icon: L.divIcon({ className: "", html: '<div class="route-doel">🏁</div>', iconSize: [36, 36], iconAnchor: [18, 18] }),
+        interactive: false,
+    }).addTo(routeLaag);
+}
+
+function toonRouteInfo() {
+    const r = actieveRoute;
+    routeResultaat.hidden = false;
+    toonSamenvatting(r.afstand, r.duur);
+    toonRouteWaarschuwing();
+    routeStappenLijst.innerHTML = r.stappen
+        .map(
+            (s, i) => `
+            <li data-stap="${i}">
+                <span class="stap-pijl">${s.pijl}</span>
+                <span class="stap-tekst">${escapeHtml(s.tekst)}</span>
+                <span class="stap-afstand">${s.afstand ? formatAfstand(s.afstand) : ""}</span>
+            </li>`
+        )
+        .join("");
+}
+
+function toonRouteWaarschuwing() {
+    const r = actieveRoute;
+    const snelsteDuur = Math.min(...routeOpties.map((o) => o.duur));
+    const ietsOmzeild = routeOpties.some((o) => o.blokkades.some(isDicht)) && !r.blokkades.some(isDicht);
+    let html = "";
+
+    if (r.blokkades.length) {
+        const dicht = r.blokkades.some(isDicht);
+        const n = r.blokkades.length;
+        const items = r.blokkades
+            .map((b) => {
+                const m = b.melding;
+                const wanneer = statusVan(m) === "gepland" ? `vanaf ${formatDatum(m.start)}` : "nu";
+                return `<li><button type="button" data-blokkade="${m.id}">
+                    <span>${(TYPES[m.type] || TYPES.overig).icoon}</span>
+                    <span><b>${escapeHtml(m.titel)}</b><small>${ERNST[m.ernst].label} · ${wanneer}</small></span>
+                </button></li>`;
+            })
+            .join("");
+        html += `
+            <div class="route-melding ${dicht ? "route-melding-gevaar" : "route-melding-letop"}">
+                <strong>${dicht ? "⛔ Je route gaat door een afsluiting" : `⚠️ ${n} ${n === 1 ? "blokkade" : "blokkades"} op je route`}</strong>
+                <ul>${items}</ul>
+                ${dicht ? "<p>We vonden geen route er omheen. Kijk bij de melding of er een omleiding is.</p>" : ""}
+            </div>`;
+    } else {
+        html += `<div class="route-melding route-melding-ok"><strong>✅ Geen blokkades op je route</strong></div>`;
+    }
+
+    if (ietsOmzeild) {
+        const extra = Math.round((r.duur - snelsteDuur) / 60);
+        html += `<p class="route-noot">↪️ We sturen je om een afsluiting heen${extra > 0 ? ` (+${extra} min)` : ""}.</p>`;
+    }
+    if (routeOpties.length > 1 && !volgen) {
+        html += `<p class="route-noot">Tik op een grijze lijn op de kaart voor een andere route.</p>`;
+    }
+    routeWaarschuwing.innerHTML = html;
+}
+
+// Meldingen veranderd (of een minuut verder): blokkades op de route opnieuw bepalen
+function routeBlokkadesBijwerken() {
+    if (!actieveRoute) return;
+    routeOpties.forEach((r) => (r.blokkades = blokkadesOpRoute(r)));
+    tekenRoutes();
+    toonRouteWaarschuwing();
+}
+
+function wisRoute() {
+    routeLaag.clearLayers();
+    routeOpties = [];
+    actieveRoute = null;
+    routeResultaat.hidden = true;
+}
+
+// --- Paneel ---
+
+function openRoutePaneel() {
+    zetPlaatsModus(false);
+    routePaneel.hidden = false;
+    meldPaneel.hidden = true;
+    btnRoute.classList.add("actief");
+}
+
+function sluitRoutePaneel() {
+    stopVolgen();
+    wisRoute();
+    routeForm.reset();
+    routePunten.van = routePunten.naar = null;
+    routePaneel.hidden = true;
+    meldPaneel.hidden = false;
+    btnRoute.classList.remove("actief");
+}
+
+/** Plan een route naar een punt (vanuit popups op de kaart). */
+function routeNaar(latlng, label) {
+    openRoutePaneel();
+    routePunten.naar = { latlng, label };
+    routeNaarInput.value = label;
+    planRoute();
+}
+
+btnRoute.addEventListener("click", () => {
+    if (routePaneel.hidden) {
+        openRoutePaneel();
+        routeNaarInput.focus();
+    } else {
+        sluitRoutePaneel();
+    }
+});
+document.getElementById("btn-route-sluit").addEventListener("click", sluitRoutePaneel);
+
+routeForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    planRoute();
+});
+
+// Ander vervoer gekozen: meteen opnieuw berekenen
+routeForm.addEventListener("change", (e) => {
+    if (e.target.name === "vervoer" && actieveRoute) planRoute({ stil: volgen, vanaf: volgen ? mijnLocatie : null });
+});
+
+document.getElementById("btn-route-wissel").addEventListener("click", () => {
+    let van = routePunten.van;
+    let vanTekst = routeVanInput.value.trim();
+    if (!vanTekst) {
+        if (!mijnLocatie) {
+            toast("Vul eerst een vertrekpunt in, of zet je locatie aan.", "info");
+            return;
+        }
+        van = { latlng: mijnLocatie, label: "Mijn locatie" };
+        vanTekst = "Mijn locatie";
+    }
+    const naarTekst = routeNaarInput.value.trim();
+    routePunten.van = routePunten.naar && routePunten.naar.label === naarTekst ? routePunten.naar : null;
+    routePunten.naar = van && van.label === vanTekst ? van : null;
+    routeVanInput.value = naarTekst;
+    routeNaarInput.value = vanTekst;
+    if (actieveRoute) planRoute();
+});
+
+routeStappenLijst.addEventListener("click", (e) => {
+    const li = e.target.closest("[data-stap]");
+    if (!li || !actieveRoute) return;
+    if (volgen) volgKaartMee = false;
+    map.setView(actieveRoute.stappen[li.dataset.stap].locatie, 17);
+});
+
+routeWaarschuwing.addEventListener("click", (e) => {
+    const knop = e.target.closest("[data-blokkade]");
+    if (!knop) return;
+    const melding = meldingen.find((m) => m.id === knop.dataset.blokkade);
+    if (!melding) return;
+    if (volgen) volgKaartMee = false;
+    map.setView([melding.lat, melding.lng], 17);
+    markers.get(melding.id)?.openPopup();
+});
+
+// --- Route volgen ---
+
+function spreek(tekst) {
+    if (!geluidAan || !("speechSynthesis" in window)) return;
+    const uiting = new SpeechSynthesisUtterance(tekst);
+    uiting.lang = "nl-NL";
+    const stem = speechSynthesis.getVoices().find((v) => v.lang?.toLowerCase().startsWith("nl"));
+    if (stem) uiting.voice = stem;
+    speechSynthesis.speak(uiting);
+}
+
+// Scherm aan houden tijdens het volgen (waar de browser dat ondersteunt)
+async function houdSchermAan() {
+    try {
+        schermSlot = await navigator.wakeLock?.request("screen");
+    } catch {
+        schermSlot = null;
+    }
+}
+
+document.addEventListener("visibilitychange", () => {
+    if (volgen && document.visibilityState === "visible") houdSchermAan();
+});
+
+async function startVolgen() {
+    if (!actieveRoute) return;
+    btnVolgen.disabled = true;
+    try {
+        await vraagLocatie();
+    } catch {
+        return; // melding over de locatie is al getoond
+    } finally {
+        btnVolgen.disabled = false;
+    }
+
+    volgen = true;
+    volgKaartMee = true;
+    huidigeStap = -1;
+    gewaarschuwd.clear();
+    document.body.classList.add("volg-modus");
+    zetPlaatsModus(false);
+    zetMeldKnop(true);
+    btnVolgen.textContent = "■ Stoppen";
+    btnVolgen.classList.replace("btn-primary", "btn-gevaar-vol");
+    navStap.hidden = false;
+    toonRouteWaarschuwing();
+    houdSchermAan();
+
+    map.setView(mijnLocatie, 17);
+    volgUpdate();
+}
+
+function stopVolgen({ stil = false } = {}) {
+    if (!volgen) return;
+    volgen = false;
+    document.body.classList.remove("volg-modus");
+    zetMeldKnop(false);
+    btnVolgen.textContent = "▶ Route volgen";
+    btnVolgen.classList.replace("btn-gevaar-vol", "btn-primary");
+    navStap.hidden = true;
+    routeStappenLijst.querySelector(".nu")?.classList.remove("nu");
+    if (!stil && "speechSynthesis" in window) speechSynthesis.cancel();
+    schermSlot?.release().catch(() => {});
+    schermSlot = null;
+    if (actieveRoute) {
+        toonSamenvatting(actieveRoute.afstand, actieveRoute.duur);
+        toonRouteWaarschuwing();
+    }
+}
+
+/** Wordt bij elke nieuwe locatie aangeroepen terwijl je een route volgt. */
+function volgUpdate(nauwkeurigheid = 0) {
+    if (!volgen || !actieveRoute || !mijnLocatie) return;
+    const r = actieveRoute;
+    const plek = puntOpRoute(mijnLocatie, r);
+
+    if (volgKaartMee) map.panTo(mijnLocatie, { animate: true });
+
+    // Aangekomen?
+    if (mijnLocatie.distanceTo(r.coords.at(-1)) < 30 || (r.afstand - plek.positie < 25 && plek.afstand < 40)) {
+        spreek("Je bent op je bestemming.");
+        toast("Je bent er! 🏁", "succes");
+        stopVolgen({ stil: true });
+        return;
+    }
+
+    // Van de route af? Dan opnieuw berekenen vanaf hier (hooguit eens per 15 seconden)
+    const marge = Math.max(50, Math.min(nauwkeurigheid, 100));
+    if (plek.afstand > marge && Date.now() - laatsteHerberekening > 15_000) {
+        laatsteHerberekening = Date.now();
+        toast("Je bent van de route af. We berekenen een nieuwe route…", "info", 3000);
+        spreek("Nieuwe route wordt berekend.");
+        planRoute({ vanaf: mijnLocatie, stil: true });
+        return;
+    }
+
+    // Resterende afstand en tijd
+    const rest = Math.max(0, r.afstand - plek.positie);
+    toonSamenvatting(rest, r.afstand ? (r.duur * rest) / r.afstand : 0);
+
+    // Volgende aanwijzing
+    let k = r.stappen.findIndex((s, i) => i > 0 && s.positie > plek.positie + 5);
+    if (k === -1) k = r.stappen.length - 1;
+    const stap = r.stappen[k];
+    const totStap = Math.max(0, stap.positie - plek.positie);
+    const drempel = NU_DREMPEL[gekozenVervoer()];
+
+    document.getElementById("nav-pijl").textContent = stap.pijl;
+    document.getElementById("nav-afstand").textContent = totStap < 15 ? "Nu" : `Over ${formatAfstand(totStap)}`;
+    document.getElementById("nav-tekst").textContent = stap.tekst;
+
+    if (k !== huidigeStap) {
+        huidigeStap = k;
+        nuGezegd = totStap <= drempel;
+        routeStappenLijst.querySelector(".nu")?.classList.remove("nu");
+        const li = routeStappenLijst.querySelector(`[data-stap="${k}"]`);
+        li?.classList.add("nu");
+        li?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        const zin = stap.tekst.charAt(0).toLowerCase() + stap.tekst.slice(1);
+        spreek(totStap > drempel ? `Over ${spreekAfstand(totStap)}, ${zin}.` : `${stap.tekst}.`);
+    } else if (!nuGezegd && totStap <= drempel) {
+        nuGezegd = true;
+        spreek(`${stap.tekst}.`);
+    }
+
+    // Waarschuwen voor blokkades die eraan komen
+    for (const b of r.blokkades) {
+        const vooruit = b.positie - plek.positie;
+        if (vooruit > -20 && vooruit < 600 && !gewaarschuwd.has(b.melding.id)) {
+            gewaarschuwd.add(b.melding.id);
+            const waar = vooruit < 50 ? "Hier" : `Over ${formatAfstand(vooruit)}`;
+            toast(`${waar}: ${b.melding.titel} (${ERNST[b.melding.ernst].label.toLowerCase()})`, "fout", 8000);
+            spreek(`Let op! ${vooruit < 50 ? "Hier" : `Over ${spreekAfstand(vooruit)}`}: ${b.melding.titel}.`);
+        }
+    }
+}
+
+btnVolgen.addEventListener("click", () => (volgen ? stopVolgen() : startVolgen()));
+
+btnGeluid.addEventListener("click", () => {
+    geluidAan = !geluidAan;
+    btnGeluid.textContent = geluidAan ? "🔊" : "🔇";
+    btnGeluid.setAttribute("aria-pressed", geluidAan);
+    if (!geluidAan && "speechSynthesis" in window) speechSynthesis.cancel();
+});
+
+// Zelf de kaart verschuiven tijdens het volgen: niet meer automatisch meebewegen
+// (de locatieknop zet het weer aan)
+map.on("dragstart", () => {
+    if (volgen) volgKaartMee = false;
+});
+
+// ---------- Hier melden (tijdens het volgen van een route) ----------
+// Opent het gewone meldformulier op de plek waar je was toen je op de knop drukte.
+
+/** Straatnaam en plaats bij een punt (OpenStreetMap). */
+async function wegnaamBij(punt) {
+    try {
+        const url = `https://nominatim.openstreetmap.org/reverse?format=json&zoom=17&lat=${punt.lat}&lon=${punt.lng}`;
+        const { address: a = {} } = await (await fetch(url, { headers: { "Accept-Language": "nl" } })).json();
+        const weg = a.road || a.pedestrian || a.cycleway || a.footway || a.path;
+        const plaats = a.village || a.town || a.city || a.municipality;
+        return weg ? [weg, plaats].filter(Boolean).join(", ") : null;
+    } catch {
+        return null;
+    }
+}
+
+async function openSnelMelding() {
+    let hier;
+    try {
+        const p = await vraagLocatie();
+        hier = L.latLng(p.lat, p.lng);
+    } catch {
+        return; // melding over de locatie is al getoond
+    }
+    openFormulier(hier);
+    document.getElementById("dialoog-titel").textContent = "Hier melden";
+    const locatieTekst = document.getElementById("locatie-tekst");
+    locatieTekst.textContent = "Op je huidige locatie";
+
+    const naam = await wegnaamBij(hier);
+    if (naam && dialoog.open && gekozenLocatie === hier) locatieTekst.textContent = naam;
+}
 
 // ---------- Start ----------
 

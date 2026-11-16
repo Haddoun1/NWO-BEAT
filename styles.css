@@ -201,20 +201,6 @@ body {
     gap: 8px;
 }
 
-.chips-scroll {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    padding-bottom: 4px;
-    margin: 0 -16px;
-    padding-left: 16px;
-    padding-right: 16px;
-    scrollbar-width: none;
-}
-
-.chips-scroll::-webkit-scrollbar {
-    display: none;
-}
-
 .chip {
     position: relative;
     flex-shrink: 0;
@@ -813,7 +799,18 @@ textarea {
 
 .popup-knoppen {
     display: flex;
+    flex-wrap: wrap;
     gap: 6px;
+}
+
+.popup-knoppen-stapel {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.popup-knoppen-stapel p {
+    margin: 0 0 4px;
 }
 
 .popup-fotos {
@@ -1596,6 +1593,365 @@ textarea.ongeldig,
     80% { transform: translateX(3px); }
 }
 
+/* ---------- Route ---------- */
+
+/* Route-knop: boven de locatieknop */
+.route-knop {
+    bottom: 172px;
+}
+
+.route-knop.actief {
+    color: #fff;
+    background: var(--ink-blauw);
+}
+
+.route-knop:hover {
+    color: var(--ink-blauw);
+}
+
+.route-knop.actief:hover {
+    color: #fff;
+}
+
+.route-kop {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.route-kop h2 {
+    margin: 0;
+    font-size: 1.15rem;
+    font-weight: 700;
+}
+
+.route-kop .sluit-knop {
+    background: var(--veld);
+}
+
+.route-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.route-velden {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-right: 46px;
+}
+
+/* Stippellijntje tussen vertrek en bestemming */
+.route-velden::before {
+    content: "";
+    position: absolute;
+    left: 17px;
+    top: 26px;
+    bottom: 26px;
+    border-left: 2px dotted var(--verlopen);
+}
+
+.route-veld {
+    position: relative;
+    display: block;
+}
+
+.route-veld input {
+    padding-left: 38px;
+}
+
+.route-stip {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    width: 12px;
+    height: 12px;
+    transform: translateY(-50%);
+    border-radius: 50%;
+    z-index: 1;
+}
+
+.route-stip-van {
+    background: #fff;
+    border: 3px solid var(--midnight);
+}
+
+.route-stip-naar {
+    background: var(--ink-blauw);
+    border-radius: 50% 50% 50% 0;
+    transform: translateY(-50%) rotate(-45deg);
+}
+
+.route-wissel {
+    position: absolute;
+    right: 0;
+    top: 50%;
+    width: 38px;
+    height: 38px;
+    transform: translateY(-50%);
+    border: none;
+    border-radius: 50%;
+    background: var(--veld);
+    color: var(--tekst);
+    font-size: 1.1rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.3s var(--veer), background 0.2s;
+}
+
+.route-wissel:hover {
+    background: var(--lavendel);
+    transform: translateY(-50%) rotate(180deg);
+}
+
+.route-plan-knop {
+    width: 100%;
+    padding: 12px;
+}
+
+.route-plan-knop:disabled {
+    opacity: 0.7;
+    cursor: progress;
+}
+
+.route-resultaat {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    animation: plop-in 0.3s var(--veer);
+}
+
+.route-samenvatting {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+}
+
+.route-samenvatting strong {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--ink-blauw);
+    letter-spacing: -0.02em;
+}
+
+.route-samenvatting span {
+    font-weight: 600;
+    color: var(--grijs);
+}
+
+.route-aankomst {
+    margin-left: auto;
+    font-size: 0.85rem;
+}
+
+.route-melding {
+    padding: 12px 14px;
+    border-radius: 16px;
+    font-size: 0.9rem;
+}
+
+.route-melding strong {
+    display: block;
+}
+
+.route-melding p {
+    margin: 8px 0 0;
+    font-size: 0.82rem;
+}
+
+.route-melding ul {
+    list-style: none;
+    margin: 8px 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.route-melding li button {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border: none;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.8);
+    font: inherit;
+    text-align: left;
+    color: var(--tekst);
+    cursor: pointer;
+    transition: transform 0.2s var(--veer);
+}
+
+.route-melding li button:hover {
+    transform: translateX(3px);
+}
+
+.route-melding li button > span:first-child {
+    font-size: 1.3rem;
+}
+
+.route-melding li b {
+    display: block;
+    font-weight: 600;
+}
+
+.route-melding li small {
+    color: var(--grijs);
+}
+
+.route-melding-ok {
+    background: color-mix(in srgb, var(--actief) 12%, white);
+    color: #12704b;
+}
+
+.route-melding-letop {
+    background: color-mix(in srgb, var(--ink-oranje) 14%, white);
+    color: #a8400f;
+}
+
+.route-melding-gevaar {
+    background: color-mix(in srgb, var(--gevaar) 13%, white);
+    color: #a3112d;
+}
+
+.route-noot {
+    margin: 0;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--grijs);
+}
+
+/* Grote aanwijzing tijdens het volgen */
+.nav-stap {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    border-radius: 18px;
+    color: #fff;
+    background: var(--midnight);
+    box-shadow: var(--schaduw-klein);
+}
+
+.nav-pijl {
+    width: 52px;
+    height: 52px;
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    border-radius: 14px;
+    background: var(--ink-blauw);
+    font-size: 1.8rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.nav-stap strong {
+    display: block;
+    font-size: 1.35rem;
+    font-weight: 700;
+}
+
+.nav-stap span:last-child {
+    font-size: 0.95rem;
+    opacity: 0.9;
+}
+
+.route-acties {
+    display: flex;
+    gap: 8px;
+}
+
+.route-acties #btn-volgen {
+    flex: 1;
+    padding: 12px;
+    color: #fff;
+}
+
+.route-acties #btn-geluid {
+    padding: 12px 16px;
+}
+
+.route-stappen {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.route-stappen li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 8px;
+    border-radius: 12px;
+    border-bottom: 1px solid var(--rand);
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.route-stappen li:last-child {
+    border-bottom: none;
+}
+
+.route-stappen li:hover {
+    background: var(--veld);
+}
+
+.route-stappen li.nu {
+    background: var(--lavendel);
+    box-shadow: inset 3px 0 0 var(--ink-blauw);
+}
+
+.stap-pijl {
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    border-radius: 10px;
+    background: var(--veld);
+    color: var(--ink-blauw);
+    font-weight: 700;
+    font-size: 1.05rem;
+}
+
+.stap-tekst {
+    flex: 1;
+    font-size: 0.88rem;
+    font-weight: 500;
+}
+
+.stap-afstand {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--grijs);
+    white-space: nowrap;
+}
+
+.route-doel {
+    width: 36px;
+    height: 36px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: #fff;
+    border: 3px solid var(--ink-blauw);
+    box-shadow: var(--schaduw-klein);
+    font-size: 1.05rem;
+}
+
+/* Tijdens het volgen: invoervelden weg, aanwijzing centraal */
+.volg-modus .route-form {
+    display: none;
+}
+
 /* ---------- Mobiel ---------- */
 
 @media (max-width: 760px) {
@@ -1640,6 +1996,20 @@ textarea.ongeldig,
         right: 12px;
         width: 46px;
         height: 46px;
+    }
+
+    .route-knop {
+        top: 196px;
+    }
+
+    .route-paneel {
+        max-height: 52vh;
+    }
+
+    /* Tijdens het volgen op mobiel: lijst met stappen inklappen, zodat de kaart groot blijft */
+    .volg-modus .route-stappen,
+    .volg-modus .route-noot {
+        display: none;
     }
 
     .plaats-hint {
