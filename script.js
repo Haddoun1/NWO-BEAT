@@ -575,7 +575,8 @@ form.addEventListener("submit", (e) => {
 
     const nu = new Date().toISOString();
     const melding = {
-        id: bewerkId || crypto.randomUUID(),
+        // randomUUID bestaat alleen op https/localhost; op je telefoon via http://192.168… niet
+        id: bewerkId || crypto.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
         type: data.type,
         ernst: data.ernst,
         titel: data.titel.trim(),

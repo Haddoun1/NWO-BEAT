@@ -874,8 +874,10 @@ textarea {
 
 .dialoog {
     width: min(580px, calc(100% - 24px));
-    max-height: calc(100% - 24px);
+    max-height: calc(100vh - 24px);
+    max-height: calc(100dvh - 24px); /* telefoons: houdt rekening met de adresbalk */
     padding: 0;
+    background: #fff;
     border: none;
     border-radius: 28px;
     color: var(--tekst);
@@ -899,11 +901,19 @@ textarea {
     to { opacity: 1; transform: none; }
 }
 
+/* Let op: "flex: 1 1 auto" en niet "flex: 1". Met flex: 1 (basis 0%) klapt de inhoud
+   in Safari op iPhone in tot 0 hoog: dan zie je alleen de wazige achtergrond. */
 .dialoog form {
     display: flex;
     flex-direction: column;
     min-height: 0;
-    flex: 1;
+    flex: 1 1 auto;
+}
+
+.dialoog-kop,
+.dialoog-voet,
+.bevestig-knoppen {
+    flex-shrink: 0;
 }
 
 .dialoog-kop {
@@ -929,7 +939,7 @@ textarea {
 }
 
 .dialoog-inhoud {
-    flex: 1;
+    flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
     padding: 18px 22px;
