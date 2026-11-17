@@ -2,7 +2,9 @@
 
 // ---------- Instellingen ----------
 
-const NEDERLAND = [52.1326, 5.2913];
+const AMSTERDAM = [52.3676, 4.9041];
+// Gemeente Amsterdam (met een kleine marge): [[zuid, west], [noord, oost]]
+const AMSTERDAM_GRENZEN = [[52.27, 4.72], [52.44, 5.09]];
 const OPSLAG_SLEUTEL = "nwo-beat-meldingen";
 
 const TYPES = {
@@ -93,7 +95,12 @@ bevestigDialoog.addEventListener("click", (e) => {
 
 // ---------- Kaart ----------
 
-const map = L.map("map", { zoomControl: false }).setView(NEDERLAND, 8);
+const map = L.map("map", {
+    zoomControl: false,
+    maxBounds: AMSTERDAM_GRENZEN,
+    maxBoundsViscosity: 1.0, // niet buiten Amsterdam kunnen slepen
+    minZoom: 11,
+}).setView(AMSTERDAM, 12);
 L.control.zoom({ position: "topright", zoomInTitle: "Inzoomen", zoomOutTitle: "Uitzoomen" }).addTo(map);
 
 L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -964,7 +971,7 @@ btnLocatie.addEventListener("click", () => {
 
 /** Zoekt een plek; geeft het eerste resultaat terug of null. Gooit bij netwerkfouten. */
 async function zoekPlek(zoekterm) {
-    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=nl&q=${encodeURIComponent(zoekterm)}`;
+    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=nl&viewbox=${AMSTERDAM_GRENZEN[0][1]},${AMSTERDAM_GRENZEN[1][0]},${AMSTERDAM_GRENZEN[1][1]},${AMSTERDAM_GRENZEN[0][0]}&bounded=1&q=${encodeURIComponent(zoekterm)}`;
     const resultaten = await (await fetch(url, { headers: { "Accept-Language": "nl" } })).json();
     return resultaten[0] || null;
 }
@@ -977,7 +984,7 @@ document.getElementById("zoek-form").addEventListener("submit", async (e) => {
     try {
         const plek = await zoekPlek(zoekterm);
         if (!plek) {
-            toast(`Geen plek gevonden voor "${zoekterm}". Probeer een andere schrijfwijze.`, "info");
+            toast(`Geen plek in Amsterdam gevonden voor "${zoekterm}". Probeer een andere schrijfwijze.`, "info");
             return;
         }
         const { lat, lon, boundingbox, display_name } = plek;
