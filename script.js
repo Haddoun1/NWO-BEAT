@@ -1,4 +1,4 @@
-// NWO BEAT – tijdelijke blokkades op de kaart (Leaflet + OpenStreetMap)
+// NWO BEAT – barrières op de kaart (Leaflet + OpenStreetMap)
 
 // ---------- Instellingen ----------
 
@@ -6,25 +6,19 @@ const AMSTERDAM = [52.3676, 4.9041];
 // Gemeente Amsterdam (met een kleine marge): [[zuid, west], [noord, oost]]
 const AMSTERDAM_GRENZEN = [[52.27, 4.72], [52.44, 5.09]];
 const OPSLAG_SLEUTEL = "nwo-beat-meldingen";
+const ROUTES_SLEUTEL = "nwo-beat-routes";
 
-const TYPES = {
-    wegafsluiting: { label: "Wegafsluiting", icoon: "⛔" },
-    werkzaamheden: { label: "Werkzaamheden", icoon: "🚧" },
-    ongeval: { label: "Ongeval", icoon: "💥" },
-    evenement: { label: "Evenement", icoon: "🎪" },
-    water: { label: "Wateroverlast", icoon: "🌊" },
-    gevaarlijk: { label: "Gevaarlijke stoffen", icoon: "☣️" },
-    obstakel: { label: "Obstakel op de weg", icoon: "🪨" },
-    overig: { label: "Overig", icoon: "📍" },
+// Impact van een barrière: 1 = een beetje lastig … 5 = dit lukt me helemaal niet
+const IMPACT = {
+    1: { emoji: "🙂", kleur: "#f5b400" },
+    2: { emoji: "😐", kleur: "#f59400" },
+    3: { emoji: "😕", kleur: "#ff6631" },
+    4: { emoji: "😣", kleur: "#e5294a" },
+    5: { emoji: "😫", kleur: "#a3122f" },
 };
-
-const ERNST = {
-    laag: { label: "Hinder", kleur: "#f5b400" },
-    middel: { label: "Beperkt", kleur: "#ff6631" },
-    hoog: { label: "Dicht", kleur: "#e5294a" },
-};
-
-const STATUS_LABEL = { actief: "Actief", gepland: "Gepland", verlopen: "Verlopen" };
+const IMPACT_UITLEG = { 1: "Een beetje lastig", 5: "Dit lukt me helemaal niet" };
+const DUUR_LABEL = { permanent: "Permanent", tijdelijk: "Tijdelijk" };
+const impactVan = (m) => IMPACT[m.impact] || IMPACT[3];
 
 // Foto's worden verkleind zodat ze in de browseropslag passen (~5 MB totaal)
 const MAX_FOTOS = 4;
@@ -69,7 +63,10 @@ function toast(tekst, type = "info", duur = 5000) {
 const bevestigDialoog = document.getElementById("bevestig-dialoog");
 
 // Eigen vervanger voor confirm(): geeft een Promise<boolean>
+const bevestigInvoer = document.getElementById("bevestig-invoer");
+
 function bevestig({ titel, tekst = "", okTekst = "OK", annuleerTekst = "Annuleren", icoon = "❓", gevaar = false }) {
+    bevestigInvoer.hidden = true;
     document.getElementById("bevestig-titel").textContent = titel;
     document.getElementById("bevestig-tekst").textContent = tekst;
     document.getElementById("bevestig-icoon").textContent = icoon;
@@ -87,6 +84,26 @@ function bevestig({ titel, tekst = "", okTekst = "OK", annuleerTekst = "Annulere
         bevestigDialoog.addEventListener("close", () => resolve(bevestigDialoog.returnValue === "ok"), { once: true });
     });
 }
+
+/** Zelfde venster, maar met een tekstveld. Geeft de ingevulde tekst terug, of null bij annuleren. */
+async function vraagTekst({ titel, tekst = "", waarde = "", placeholder = "", okTekst = "OK", icoon = "✏️" }) {
+    const klaar = bevestig({ titel, tekst, okTekst, icoon });
+    bevestigInvoer.hidden = false;
+    bevestigInvoer.value = waarde;
+    bevestigInvoer.placeholder = placeholder;
+    bevestigInvoer.focus();
+    bevestigInvoer.select();
+    const ok = await klaar;
+    bevestigInvoer.hidden = true;
+    return ok ? bevestigInvoer.value.trim() : null;
+}
+
+// Enter in het tekstveld = OK (anders zou de eerste knop, Annuleren, het formulier versturen)
+bevestigInvoer.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    bevestigDialoog.close("ok");
+});
 
 // Klik op de achtergrond = annuleren
 bevestigDialoog.addEventListener("click", (e) => {
@@ -115,11 +132,33 @@ const meldingLaag = L.layerGroup().addTo(map);
 // ---------- Opslag (voorlopig alleen in deze browser) ----------
 
 function laadMeldingen() {
+    let lijst;
     try {
-        return JSON.parse(localStorage.getItem(OPSLAG_SLEUTEL)) || [];
+        lijst = JSON.parse(localStorage.getItem(OPSLAG_SLEUTEL)) || [];
     } catch {
         return [];
     }
+    // Meldingen van vóór de barrièrekaart omzetten (titel/ernst/datums → barrièrevelden)
+    let volgende = Math.max(0, ...lijst.map((m) => Number(m.nr) || 0)) + 1;
+    return lijst.map((m) => {
+        if (m.wat !== undefined) return m;
+        return {
+            id: m.id,
+            nr: volgende++,
+            wat: m.titel || "",
+            locatie: m.adres || "",
+            duur: m.eind ? "tijdelijk" : "permanent",
+            waarom: m.omschrijving || "",
+            impact: { laag: 2, middel: 3, hoog: 5 }[m.ernst] || 3,
+            oplossing: m.omleiding || "",
+            fotos: m.fotos || [],
+            lat: m.lat,
+            lng: m.lng,
+            adres: m.adres || null,
+            aangemaakt: m.aangemaakt || m.start,
+            bijgewerkt: m.bijgewerkt,
+        };
+    });
 }
 
 function bewaarMeldingen() {
@@ -138,14 +177,22 @@ let meldingen = laadMeldingen();
 
 const HTML_TEKENS = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 
-function escapeHtml(tekst = "") {
-    return String(tekst).replace(/[&<>"']/g, (c) => HTML_TEKENS[c]);
+/** fetch, maar geeft na `ms` milliseconden op (met een duidelijke fout). */
+async function fetchMetTimeout(url, ms, opties = {}) {
+    const stop = new AbortController();
+    const klok = setTimeout(() => stop.abort(), ms);
+    try {
+        return await fetch(url, { ...opties, signal: stop.signal });
+    } catch (err) {
+        if (err.name === "AbortError") throw Object.assign(new Error("timeout"), { timeout: true });
+        throw err;
+    } finally {
+        clearTimeout(klok);
+    }
 }
 
-function statusVan(melding, nu = new Date()) {
-    if (new Date(melding.start) > nu) return "gepland";
-    if (melding.eind && new Date(melding.eind) < nu) return "verlopen";
-    return "actief";
+function escapeHtml(tekst = "") {
+    return String(tekst).replace(/[&<>"']/g, (c) => HTML_TEKENS[c]);
 }
 
 function formatDatum(iso) {
@@ -153,20 +200,11 @@ function formatDatum(iso) {
     return new Date(iso).toLocaleString("nl-NL", { dateStyle: "medium", timeStyle: "short" });
 }
 
-// Waarde voor <input type="datetime-local"> in lokale tijd
-function naarInputDatum(datum) {
-    const d = new Date(datum);
-    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-    return d.toISOString().slice(0, 16);
-}
-
-function maakIcoon(melding) {
-    const type = TYPES[melding.type] || TYPES.overig;
-    const status = statusVan(melding);
-    const puls = status === "actief" && melding.ernst === "hoog" ? " marker-puls" : "";
+function maakIcoon(m) {
+    const klassen = ["marker", m.duur === "tijdelijk" ? "marker-tijdelijk" : "", m.impact >= 5 ? "marker-puls" : ""];
     return L.divIcon({
         className: "",
-        html: `<div class="marker marker-${status}${puls}" style="--kleur:${ERNST[melding.ernst].kleur}"><span>${type.icoon}</span></div>`,
+        html: `<div class="${klassen.filter(Boolean).join(" ")}" style="--kleur:${impactVan(m).kleur}"><span>${m.nr ?? "?"}</span></div>`,
         iconSize: [40, 40],
         iconAnchor: [20, 40],
         popupAnchor: [0, -38],
@@ -174,31 +212,27 @@ function maakIcoon(melding) {
 }
 
 function popupHtml(m) {
-    const type = TYPES[m.type] || TYPES.overig;
-    const status = statusVan(m);
+    const impact = impactVan(m);
     const regel = (label, waarde) => (waarde ? `<dt>${label}</dt><dd>${escapeHtml(waarde)}</dd>` : "");
     return `
         <div class="popup">
-            <div class="popup-kop" style="--kleur:${ERNST[m.ernst].kleur}">
-                <span class="popup-icoon">${type.icoon}</span>
+            <div class="popup-kop" style="--kleur:${impact.kleur}">
+                <span class="popup-icoon">${impact.emoji}</span>
                 <div>
-                    <p class="popup-type">${type.label}</p>
-                    <h3>${escapeHtml(m.titel)}</h3>
+                    <p class="popup-type">Barrière nr. ${escapeHtml(m.nr ?? "?")}</p>
+                    <h3>${escapeHtml(m.wat)}</h3>
                 </div>
             </div>
             <div class="popup-badges">
-                <span class="badge" style="background:${ERNST[m.ernst].kleur}">${ERNST[m.ernst].label}</span>
-                <span class="badge badge-${status}">${STATUS_LABEL[status]}</span>
+                <span class="badge" style="background:${impact.kleur}">Impact ${m.impact}/5</span>
+                ${m.duur ? `<span class="badge badge-${m.duur}">${DUUR_LABEL[m.duur]}</span>` : ""}
             </div>
-            ${m.omschrijving ? `<p>${escapeHtml(m.omschrijving)}</p>` : ""}
             ${fotosHtml(m)}
             <dl>
-                ${regel("Begin", formatDatum(m.start))}
-                ${regel("Einde", m.eind ? formatDatum(m.eind) : "onbekend")}
-                ${regel("Straal", m.straal ? `${m.straal} m` : "")}
-                ${regel("Omleiding", m.omleiding)}
-                ${regel("Contact", m.contact)}
-                ${regel("Gemeld door", m.gemeldDoor)}
+                ${regel("Locatie", m.locatie || m.adres)}
+                ${regel("Waarom", m.waarom)}
+                ${regel("Oplossing", m.oplossing)}
+                ${regel("Gemeld", m.aangemaakt ? formatDatum(m.aangemaakt) : "")}
             </dl>
             <div class="popup-knoppen">
                 <button class="btn btn-klein btn-licht" data-actie="route" data-id="${m.id}">🧭 Route</button>
@@ -372,19 +406,19 @@ lightbox.addEventListener("click", () => lightbox.close());
 
 // ---------- Filters ----------
 
-// Type-tegels in het formulier
-document.getElementById("type-keuze").innerHTML = Object.entries(TYPES)
+// Impact-keuze (1 t/m 5) in het formulier
+document.getElementById("impact-keuze").innerHTML = Object.entries(IMPACT)
     .map(
-        ([waarde, t], i) => `
-        <label class="type-tegel">
-            <input type="radio" name="type" value="${waarde}"${i === 0 ? " required" : ""}>
-            <span><span class="type-emoji">${t.icoon}</span>${t.label}</span>
+        ([n, i]) => `
+        <label class="impact-optie" style="--e:${i.kleur}">
+            <input type="radio" name="impact" value="${n}" aria-label="Impact ${n}${IMPACT_UITLEG[n] ? `: ${IMPACT_UITLEG[n]}` : ""}">
+            <span><span class="impact-emoji">${i.emoji}</span><b>${n}</b></span>
         </label>`
     )
     .join("");
 
-function actieveStatussen() {
-    return [...document.querySelectorAll('input[name="status"]:checked')].map((el) => el.value);
+function actieveDuren() {
+    return [...document.querySelectorAll('.filters input[name="duur"]:checked')].map((el) => el.value);
 }
 
 document.querySelector(".filters").addEventListener("change", render);
@@ -397,67 +431,22 @@ function render() {
     meldingLaag.clearLayers();
     markers.clear();
 
-    const statussen = actieveStatussen();
+    const duren = actieveDuren();
     const zichtbaar = meldingen
-        .filter((m) => statussen.includes(statusVan(m)))
-        .sort((a, b) => new Date(a.start) - new Date(b.start));
+        .filter((m) => !m.duur || duren.includes(m.duur))
+        .sort((a, b) => (Number(a.nr) || 0) - (Number(b.nr) || 0));
 
     for (const m of zichtbaar) {
-        if (m.straal > 0) {
-            L.circle([m.lat, m.lng], {
-                radius: m.straal,
-                color: ERNST[m.ernst].kleur,
-                weight: 2,
-                fillOpacity: 0.12,
-                dashArray: statusVan(m) === "actief" ? null : "6 6",
-            }).addTo(meldingLaag);
-        }
-        const marker = L.marker([m.lat, m.lng], { icon: maakIcoon(m), title: m.titel })
+        const marker = L.marker([m.lat, m.lng], { icon: maakIcoon(m), title: `Barrière ${m.nr}: ${m.wat}` })
             .bindPopup(popupHtml(m), { maxWidth: 300 })
             .addTo(meldingLaag);
         markers.set(m.id, marker);
     }
 
-    renderLijst(zichtbaar);
     routeBlokkadesBijwerken();
 }
 
-function renderLijst(zichtbaar) {
-    document.getElementById("aantal").textContent = zichtbaar.length;
-    document.getElementById("leeg").hidden = zichtbaar.length > 0;
-
-    document.getElementById("lijst").innerHTML = zichtbaar
-        .map((m) => {
-            const type = TYPES[m.type] || TYPES.overig;
-            const status = statusVan(m);
-            return `
-            <li>
-                <button class="lijst-item" data-id="${m.id}" style="--kleur:${ERNST[m.ernst].kleur}">
-                    <span class="lijst-icoon">${type.icoon}</span>
-                    <span class="lijst-tekst">
-                        <strong>${escapeHtml(m.titel)}</strong>
-                        <small>${formatDatum(m.start)} → ${m.eind ? formatDatum(m.eind) : "onbekend"}</small>
-                        <span class="lijst-tags">
-                            <span class="tag tag-${status}">${STATUS_LABEL[status]}</span>
-                            <span class="tag tag-ernst">${ERNST[m.ernst].label}</span>
-                            ${m.fotos?.length ? `<span class="tag" title="${m.fotos.length} foto('s)">📷 ${m.fotos.length}</span>` : ""}
-                        </span>
-                    </span>
-                </button>
-            </li>`;
-        })
-        .join("");
-}
-
-document.getElementById("lijst").addEventListener("click", (e) => {
-    const knop = e.target.closest(".lijst-item");
-    const marker = knop && markers.get(knop.dataset.id);
-    if (!marker) return;
-    map.setView(marker.getLatLng(), Math.max(map.getZoom(), 15));
-    marker.openPopup();
-});
-
-// ---------- Melding toevoegen / bewerken ----------
+// ---------- Barrière melden / bewerken (de barrièrekaart) ----------
 
 const dialoog = document.getElementById("dialoog");
 const form = document.getElementById("melding-form");
@@ -465,38 +454,65 @@ const plaatsHint = document.getElementById("plaats-hint");
 
 let bewerkId = null;
 let gekozenLocatie = null;
+let gekozenAdres = null; // adres bij gekozenLocatie, zodra het gevonden is
+
+/** Adres bij een punt (OpenStreetMap), bijv. "Damrak 12, Amsterdam". Geeft null als het niet lukt. */
+async function adresBij(punt) {
+    try {
+        const url = `https://nominatim.openstreetmap.org/reverse?format=json&zoom=18&lat=${punt.lat}&lon=${punt.lng}`;
+        const antwoord = await fetchMetTimeout(url, 6_000, { headers: { "Accept-Language": "nl" } });
+        const { address: a = {} } = await antwoord.json();
+        const weg = a.road || a.pedestrian || a.cycleway || a.footway || a.path || a.square;
+        const plaats = a.city || a.town || a.village || a.municipality;
+        const straat = weg ? [weg, a.house_number].filter(Boolean).join(" ") : a.neighbourhood || a.suburb;
+        return straat ? [straat, plaats].filter(Boolean).join(", ") : null;
+    } catch {
+        return null;
+    }
+}
+
+/** Vult het locatieveld met het adres (als het nog leeg is); zoekt het adres zo nodig op. */
+async function vulLocatieAdres(latlng, bekendAdres = null) {
+    const veld = form.elements.locatie;
+    gekozenAdres = bekendAdres;
+    if (bekendAdres) return;
+    veld.placeholder = "Adres zoeken…";
+    const adres = await adresBij(latlng);
+    if (gekozenLocatie !== latlng) return; // intussen een andere plek gekozen
+    gekozenAdres = adres;
+    veld.placeholder = "Bijv. bij de ingang van het station";
+    if (adres && !veld.value.trim()) veld.value = adres;
+}
+
+/** Eerstvolgende vrije barrièrenummer. */
+const volgendNr = () => Math.max(0, ...meldingen.map((m) => Number(m.nr) || 0)) + 1;
+
 let plaatsModus = false;
 
 function openFormulier(latlng, melding = null) {
     form.reset();
     bewerkId = melding ? melding.id : null;
     gekozenLocatie = latlng;
-    document.getElementById("dialoog-titel").textContent = melding ? "Melding bewerken" : "Blokkade melden";
-    document.getElementById("locatie-tekst").textContent = `${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}`;
 
     if (melding) {
         for (const [veld, waarde] of Object.entries(melding)) {
             const el = form.elements[veld];
-            if (!el || waarde == null) continue;
-            el.value = veld === "start" || veld === "eind" ? naarInputDatum(waarde) : waarde;
+            if (el && waarde != null) el.value = waarde;
         }
     } else {
-        form.elements.start.value = naarInputDatum(new Date());
+        form.elements.nr.value = volgendNr();
     }
+    vulLocatieAdres(latlng, melding?.adres);
 
     huidigeFotos = melding?.fotos ? [...melding.fotos] : [];
     renderFotoPreview();
-
-    // "Meer details" openklappen als daar al iets in staat
-    document.getElementById("meer-details").open = Boolean(
-        melding && (melding.straal || melding.omleiding || melding.contact || melding.gemeldDoor)
-    );
 
     wisFouten();
     formGewijzigd = false;
 
     map.closePopup();
     dialoog.showModal();
+    dialoog.querySelector(".dialoog-inhoud").scrollTop = 0;
 }
 
 // ---------- Eigen formuliercontrole (i.p.v. Chrome-ballonnetjes) ----------
@@ -510,7 +526,7 @@ function wisFouten() {
 
 function toonVeldFout(veld, tekst) {
     // Bij radioknoppen/tegels de hele groep markeren, anders het veld zelf
-    const houder = veld.closest(".type-tegels, .ernst-keuze") || veld.closest(".dicteer-veld") || veld;
+    const houder = veld.closest(".impact-keuze, .duur-keuze") || veld.closest(".dicteer-veld") || veld;
     houder.classList.add("ongeldig");
     const fout = document.createElement("p");
     fout.className = "veld-fout";
@@ -522,12 +538,8 @@ function toonVeldFout(veld, tekst) {
 function controleerFormulier(data) {
     wisFouten();
     const fouten = [];
-    if (!data.type) fouten.push([form.querySelector('input[name="type"]'), "Kies wat er aan de hand is."]);
-    if (!data.titel?.trim()) fouten.push([form.elements.titel, "Geef de melding een korte titel."]);
-    if (!data.start) fouten.push([form.elements.start, "Vul in vanaf wanneer de blokkade geldt."]);
-    else if (data.eind && new Date(data.eind) < new Date(data.start)) {
-        fouten.push([form.elements.eind, "Het einde moet na het begin liggen."]);
-    }
+    if (!data.wat?.trim()) fouten.push([form.elements.wat, "Beschrijf kort wat de barrière is."]);
+    if (!data.impact) fouten.push([form.querySelector('input[name="impact"]'), "Kies hoeveel last je ervan hebt."]);
 
     fouten.forEach(([veld, tekst]) => toonVeldFout(veld, tekst));
     if (fouten.length) {
@@ -577,25 +589,22 @@ dialoog.addEventListener("cancel", (e) => {
 form.addEventListener("submit", (e) => {
     e.preventDefault();
     const data = Object.fromEntries(new FormData(form));
-
     if (!controleerFormulier(data)) return;
 
     const nu = new Date().toISOString();
     const melding = {
         // randomUUID bestaat alleen op https/localhost; op je telefoon via http://192.168… niet
         id: bewerkId || crypto.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
-        type: data.type,
-        ernst: data.ernst,
-        titel: data.titel.trim(),
-        omschrijving: data.omschrijving.trim(),
-        start: new Date(data.start).toISOString(),
-        eind: data.eind ? new Date(data.eind).toISOString() : null,
-        straal: Number(data.straal) || 0,
-        omleiding: data.omleiding.trim(),
-        contact: data.contact.trim(),
-        gemeldDoor: data.gemeldDoor.trim(),
+        nr: Number(data.nr) || volgendNr(),
+        wat: data.wat.trim(),
+        locatie: data.locatie.trim(),
+        duur: data.duur || null,
+        waarom: data.waarom.trim(),
+        impact: Number(data.impact),
+        oplossing: data.oplossing.trim(),
         lat: gekozenLocatie.lat,
         lng: gekozenLocatie.lng,
+        adres: gekozenAdres,
         fotos: [...huidigeFotos],
         bijgewerkt: nu,
     };
@@ -609,14 +618,14 @@ form.addEventListener("submit", (e) => {
 
     if (!bewaarMeldingen()) {
         meldingen = vorige;
-        toast("Opslaan mislukt: de opslag in deze browser is vol. Verwijder een paar foto's of oude meldingen en probeer het opnieuw.", "fout", 8000);
+        toast("Opslaan mislukt: de opslag in deze browser is vol. Verwijder een paar foto's of oude barrières en probeer het opnieuw.", "fout", 8000);
         return;
     }
 
     dialoog.close();
     render();
     markers.get(melding.id)?.openPopup();
-    toast(bewerkId ? "Melding bijgewerkt" : "Melding geplaatst — bedankt!", "succes", 3000);
+    toast(bewerkId ? "Barrière bijgewerkt" : "Barrière opgeslagen — bedankt!", "succes", 3000);
 });
 
 document.getElementById("btn-annuleer").addEventListener("click", probeerFormulierTeSluiten);
@@ -778,8 +787,13 @@ map.on("click", (e) => {
     const inhoud = document.createElement("div");
     inhoud.className = "popup-knoppen-stapel";
     inhoud.innerHTML = `
-        <button class="btn btn-primary btn-klein" type="button" data-kies="melden">📍 Blokkade hier melden</button>
-        <button class="btn btn-licht btn-klein" type="button" data-kies="route">🧭 Route hierheen</button>`;
+        <button class="btn btn-primary btn-klein" type="button" data-kies="melden">📍 Barrière hier melden</button>
+        <button class="btn btn-licht btn-klein" type="button" data-kies="route">🧭 Route hierheen</button>
+        ${actieveRoute ? '<button class="btn btn-licht btn-klein" type="button" data-kies="stop">➕ Als tussenstop</button>' : ""}`;
+    inhoud.querySelector('[data-kies="stop"]')?.addEventListener("click", () => {
+        map.closePopup();
+        stopOpKaart(e.latlng);
+    });
     inhoud.querySelector('[data-kies="melden"]').addEventListener("click", () => openFormulier(e.latlng));
     inhoud.querySelector('[data-kies="route"]').addEventListener("click", () => {
         map.closePopup();
@@ -801,7 +815,7 @@ btnNieuw.addEventListener("click", () => (volgen ? openSnelMelding() : zetPlaats
 
 function zetMeldKnop(hier) {
     btnNieuw.querySelector(".fab-tekst").textContent = hier ? "Hier melden" : "Melden";
-    btnNieuw.setAttribute("aria-label", hier ? "Blokkade melden op je huidige locatie" : "Blokkade melden");
+    btnNieuw.setAttribute("aria-label", hier ? "Barrière melden op je huidige locatie" : "Barrière melden");
 }
 document.getElementById("btn-annuleer-plaats").addEventListener("click", () => zetPlaatsModus(false));
 document.addEventListener("keydown", (e) => {
@@ -826,13 +840,13 @@ document.addEventListener(
 
         if (knop.dataset.actie === "route") {
             map.closePopup();
-            routeNaar(L.latLng(melding.lat, melding.lng), melding.titel);
+            routeNaar(L.latLng(melding.lat, melding.lng), `Barrière ${melding.nr}`);
         } else if (knop.dataset.actie === "bewerk") {
             openFormulier(L.latLng(melding.lat, melding.lng), melding);
         } else if (knop.dataset.actie === "verwijder") {
             bevestig({
-                titel: "Melding verwijderen?",
-                tekst: `"${melding.titel}" wordt definitief verwijderd. Dit kun je niet ongedaan maken.`,
+                titel: "Barrière verwijderen?",
+                tekst: `Barrière ${melding.nr} ("${melding.wat}") wordt definitief verwijderd. Dit kun je niet ongedaan maken.`,
                 okTekst: "Ja, verwijderen",
                 icoon: "🗑️",
                 gevaar: true,
@@ -842,7 +856,7 @@ document.addEventListener(
                 bewaarMeldingen();
                 map.closePopup();
                 render();
-                toast("Melding verwijderd", "succes", 3000);
+                toast("Barrière verwijderd", "succes", 3000);
             });
         }
     },
@@ -864,7 +878,7 @@ function locatiePopup() {
     inhoud.innerHTML = `
         <p class="popup-type">Jouw locatie</p>
         <p class="locatie-nauwkeurig"></p>
-        <button class="btn btn-primary btn-klein" type="button">📍 Blokkade hier melden</button>`;
+        <button class="btn btn-primary btn-klein" type="button">📍 Barrière hier melden</button>`;
     inhoud.querySelector("button").addEventListener("click", () => openFormulier(mijnLocatie));
     return inhoud;
 }
@@ -970,10 +984,17 @@ btnLocatie.addEventListener("click", () => {
 // ---------- Adres zoeken (Nominatim / OpenStreetMap) ----------
 
 /** Zoekt een plek; geeft het eerste resultaat terug of null. Gooit bij netwerkfouten. */
+const plekCache = new Map(); // zoekterm -> resultaat
+
 async function zoekPlek(zoekterm) {
+    const sleutel = zoekterm.toLowerCase();
+    if (plekCache.has(sleutel)) return plekCache.get(sleutel);
     const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=nl&viewbox=${AMSTERDAM_GRENZEN[0][1]},${AMSTERDAM_GRENZEN[1][0]},${AMSTERDAM_GRENZEN[1][1]},${AMSTERDAM_GRENZEN[0][0]}&bounded=1&q=${encodeURIComponent(zoekterm)}`;
-    const resultaten = await (await fetch(url, { headers: { "Accept-Language": "nl" } })).json();
-    return resultaten[0] || null;
+    const antwoord = await fetchMetTimeout(url, 10_000, { headers: { "Accept-Language": "nl" } });
+    const resultaten = await antwoord.json();
+    const plek = resultaten[0] || null;
+    if (plek) plekCache.set(sleutel, plek);
+    return plek;
 }
 
 document.getElementById("zoek-form").addEventListener("submit", async (e) => {
@@ -989,22 +1010,227 @@ document.getElementById("zoek-form").addEventListener("submit", async (e) => {
         }
         const { lat, lon, boundingbox, display_name } = plek;
         const [zuid, noord, west, oost] = boundingbox.map(Number);
-        map.fitBounds([[zuid, west], [noord, oost]], { maxZoom: 17 });
-
-        const inhoud = document.createElement("div");
-        inhoud.className = "popup-knoppen-stapel";
-        inhoud.innerHTML = `<p>${escapeHtml(display_name)}</p>
-            <button class="btn btn-primary btn-klein" type="button">🧭 Route hierheen</button>`;
-        inhoud.querySelector("button").addEventListener("click", () => {
-            map.closePopup();
-            routeNaar(L.latLng(lat, lon), display_name.split(",")[0]);
-        });
-        L.popup().setLatLng([lat, lon]).setContent(inhoud).openOn(map);
+        toonGevondenPlek(L.latLng(lat, lon), display_name.split(",")[0], display_name, [[zuid, west], [noord, oost]]);
     } catch (err) {
         console.error(err);
         toast("Zoeken mislukt. Controleer je internetverbinding.", "fout");
     }
 });
+
+/** Gevonden plek op de kaart laten zien, met een knop om er een route naartoe te plannen. */
+function toonGevondenPlek(latlng, naam, omschrijving, grenzen = null) {
+    if (grenzen) map.fitBounds(grenzen, { maxZoom: 17 });
+    else map.setView(latlng, Math.max(map.getZoom(), 17));
+
+    const inhoud = document.createElement("div");
+    inhoud.className = "popup-knoppen-stapel";
+    inhoud.innerHTML = `<p>${escapeHtml(omschrijving)}</p>
+        <button class="btn btn-primary btn-klein" type="button">🧭 Route hierheen</button>`;
+    inhoud.querySelector("button").addEventListener("click", () => {
+        map.closePopup();
+        routeNaar(latlng, naam);
+    });
+    L.popup().setLatLng(latlng).setContent(inhoud).openOn(map);
+}
+
+// ---------- Adressuggesties tijdens het typen (Photon / OpenStreetMap) ----------
+// Nominatim staat zoeken-tijdens-typen niet toe; Photon (van Komoot) is daar juist voor gemaakt.
+
+const suggestieCache = new Map(); // zoekterm -> resultaten
+const suggestieLijst = document.createElement("ul");
+suggestieLijst.id = "suggesties";
+suggestieLijst.className = "suggesties";
+suggestieLijst.setAttribute("role", "listbox");
+suggestieLijst.hidden = true;
+document.body.append(suggestieLijst);
+
+// Het veld waar de lijst nu onder staat: { input, onKies, resultaten, actief }
+let suggestieVeld = null;
+
+/** Maakt van een Photon-resultaat een titel (wat in het veld komt) en een regel met details. */
+function beschrijfPlek(f) {
+    const p = f.properties;
+    const straat = p.street ? [p.street, p.housenumber].filter(Boolean).join(" ") : "";
+    const titel = p.name || straat || p.city || "Onbekende plek";
+    const details = [p.name ? straat : "", p.postcode, p.district, p.city]
+        .filter((d) => d && d !== titel)
+        .filter((d, i, lijst) => lijst.indexOf(d) === i)
+        .join(", ");
+    const icoon = p.housenumber ? "🏠" : p.osm_key === "highway" ? "🛣️" : p.osm_key === "place" ? "🏙️" : "📍";
+    return {
+        titel,
+        details,
+        icoon,
+        latlng: L.latLng(f.geometry.coordinates[1], f.geometry.coordinates[0]),
+    };
+}
+
+async function haalSuggesties(tekst, signal) {
+    const sleutel = tekst.toLowerCase();
+    if (suggestieCache.has(sleutel)) return suggestieCache.get(sleutel);
+    const [[zuid, west], [noord, oost]] = AMSTERDAM_GRENZEN;
+    const midden = mijnLocatie || map.getCenter();
+    const url =
+        `https://photon.komoot.io/api/?q=${encodeURIComponent(tekst)}&limit=8` +
+        `&bbox=${west},${zuid},${oost},${noord}&lat=${midden.lat.toFixed(4)}&lon=${midden.lng.toFixed(4)}`;
+    const antwoord = await fetch(url, { signal });
+    if (!antwoord.ok) throw new Error(`Photon gaf ${antwoord.status}`);
+    const { features = [] } = await antwoord.json();
+
+    // Dubbele resultaten (bijv. een straat die uit meerdere stukken bestaat) maar één keer tonen
+    const gezien = new Set();
+    const resultaten = features
+        .map(beschrijfPlek)
+        .filter((r) => {
+            const sleutel = `${r.titel}|${r.details}`;
+            if (gezien.has(sleutel)) return false;
+            gezien.add(sleutel);
+            return true;
+        })
+        .slice(0, 6);
+    if (suggestieCache.size > 100) suggestieCache.delete(suggestieCache.keys().next().value);
+    suggestieCache.set(sleutel, resultaten);
+    return resultaten;
+}
+
+function plaatsSuggesties() {
+    if (!suggestieVeld) return;
+    const vak = suggestieVeld.input.getBoundingClientRect();
+    suggestieLijst.style.left = `${vak.left}px`;
+    suggestieLijst.style.width = `${vak.width}px`;
+    // Te weinig ruimte onder het veld (bijv. toetsenbord op de telefoon)? Dan erboven.
+    if (innerHeight - vak.bottom < 220 && vak.top > innerHeight - vak.bottom) {
+        suggestieLijst.style.top = "auto";
+        suggestieLijst.style.bottom = `${innerHeight - vak.top + 6}px`;
+    } else {
+        suggestieLijst.style.top = `${vak.bottom + 6}px`;
+        suggestieLijst.style.bottom = "auto";
+    }
+}
+
+function markeerSuggestie(index) {
+    if (!suggestieVeld) return;
+    suggestieVeld.actief = index;
+    [...suggestieLijst.children].forEach((li, i) => li.setAttribute("aria-selected", i === index));
+    if (index >= 0) {
+        suggestieLijst.children[index].scrollIntoView({ block: "nearest" });
+        suggestieVeld.input.setAttribute("aria-activedescendant", `suggestie-${index}`);
+    } else {
+        suggestieVeld.input.removeAttribute("aria-activedescendant");
+    }
+}
+
+function toonSuggesties(input, onKies, resultaten) {
+    if (!resultaten.length) {
+        sluitSuggesties();
+        return;
+    }
+    suggestieVeld = { input, onKies, resultaten, actief: -1 };
+    suggestieLijst.innerHTML = resultaten
+        .map(
+            (r, i) => `
+            <li id="suggestie-${i}" role="option" aria-selected="false" data-index="${i}">
+                <span class="suggestie-icoon" aria-hidden="true">${r.icoon}</span>
+                <span class="suggestie-tekst">
+                    <strong>${escapeHtml(r.titel)}</strong>
+                    ${r.details ? `<small>${escapeHtml(r.details)}</small>` : ""}
+                </span>
+            </li>`
+        )
+        .join("");
+    suggestieLijst.hidden = false;
+    input.setAttribute("aria-expanded", "true");
+    plaatsSuggesties();
+}
+
+function sluitSuggesties() {
+    if (suggestieVeld) {
+        suggestieVeld.input.setAttribute("aria-expanded", "false");
+        suggestieVeld.input.removeAttribute("aria-activedescendant");
+    }
+    suggestieVeld = null;
+    suggestieLijst.hidden = true;
+    suggestieLijst.innerHTML = "";
+}
+
+function kiesSuggestie(index) {
+    const veld = suggestieVeld;
+    const gekozen = veld?.resultaten[index];
+    if (!gekozen) return;
+    veld.input.value = gekozen.titel;
+    sluitSuggesties();
+    veld.onKies(gekozen);
+}
+
+// Klikken in de lijst mag het veld niet laten "blurren" (dan zou de lijst al dicht zijn)
+suggestieLijst.addEventListener("pointerdown", (e) => e.preventDefault());
+suggestieLijst.addEventListener("click", (e) => {
+    const li = e.target.closest("[data-index]");
+    if (li) kiesSuggestie(Number(li.dataset.index));
+});
+addEventListener("resize", plaatsSuggesties);
+document.addEventListener("scroll", plaatsSuggesties, true);
+
+/** Geeft een invoerveld adressuggesties; onKies({ titel, details, latlng }) wordt aangeroepen bij een keuze. */
+function koppelSuggesties(input, onKies) {
+    let klok = null;
+    let verzoek = null;
+    input.setAttribute("role", "combobox");
+    input.setAttribute("aria-autocomplete", "list");
+    input.setAttribute("aria-expanded", "false");
+    input.setAttribute("aria-controls", "suggesties");
+    input.setAttribute("autocomplete", "off");
+
+    input.addEventListener("input", () => {
+        clearTimeout(klok);
+        verzoek?.abort();
+        const tekst = input.value.trim();
+        if (tekst.length < 3) {
+            if (suggestieVeld?.input === input) sluitSuggesties();
+            return;
+        }
+        klok = setTimeout(async () => {
+            verzoek = new AbortController();
+            try {
+                const resultaten = await haalSuggesties(tekst, verzoek.signal);
+                // Intussen verder getypt of weggeklikt? Dan niet meer tonen.
+                if (document.activeElement !== input || input.value.trim() !== tekst) return;
+                toonSuggesties(input, onKies, resultaten);
+            } catch (err) {
+                if (err.name !== "AbortError") console.warn("Suggesties ophalen mislukt", err);
+            }
+        }, 250);
+    });
+
+    input.addEventListener("keydown", (e) => {
+        if (suggestieVeld?.input !== input) return;
+        const aantal = suggestieVeld.resultaten.length;
+        if (e.key === "ArrowDown") {
+            e.preventDefault();
+            markeerSuggestie((suggestieVeld.actief + 1) % aantal);
+        } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            markeerSuggestie(suggestieVeld.actief <= 0 ? aantal - 1 : suggestieVeld.actief - 1);
+        } else if (e.key === "Enter" && suggestieVeld.actief >= 0) {
+            e.preventDefault();
+            kiesSuggestie(suggestieVeld.actief);
+        } else if (e.key === "Escape") {
+            e.preventDefault();
+            sluitSuggesties();
+        } else if (e.key === "Enter" || e.key === "Tab") {
+            sluitSuggesties();
+        }
+    });
+
+    input.addEventListener("blur", () => {
+        clearTimeout(klok);
+        if (suggestieVeld?.input === input) sluitSuggesties();
+    });
+}
+
+koppelSuggesties(document.getElementById("zoek-input"), (r) =>
+    toonGevondenPlek(r.latlng, r.titel, [r.titel, r.details].filter(Boolean).join(", "))
+);
 
 // ---------- Route plannen en volgen ----------
 // Routes komen van de gratis OSRM-server van OpenStreetMap Duitsland (auto, fiets, lopen).
@@ -1029,9 +1255,15 @@ const routeLaag = L.layerGroup().addTo(map);
 
 // Gekozen punten: { latlng, label }. Zolang de tekst in het veld gelijk is aan label, gebruiken we latlng.
 const routePunten = { van: null, naar: null };
+// Tussenstops in volgorde: { rij, input, punt: { latlng, label } | null, bezocht }
+let routeStops = [];
+const MAX_STOPS = 8;
+const routeStopsEl = document.getElementById("route-stops");
+const btnStopToevoegen = document.getElementById("btn-stop-toevoegen");
 let routeOpties = []; // berekende routes, beste eerst
 let actieveRoute = null;
 let routeBezig = false;
+let routeWachtrij = null; // aanvraag die binnenkwam terwijl er al gerekend werd
 
 let volgen = false;
 let volgKaartMee = true;
@@ -1130,7 +1362,7 @@ function afstandM([lat1, lng1], [lat2, lng2]) {
 }
 
 /** Maakt van een OSRM-route iets waar we makkelijk mee kunnen rekenen. */
-function verrijkRoute(r) {
+function verrijkRoute(r, stopLegs = new Map()) {
     const coords = r.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
     const cum = [0];
     for (let i = 1; i < coords.length; i++) cum.push(cum[i - 1] + afstandM(coords[i - 1], coords[i]));
@@ -1138,15 +1370,14 @@ function verrijkRoute(r) {
 
     const stappen = [];
     let positie = 0;
-    let keerpunten = 0;
+    const stopPosities = []; // waar op de route (meters) je bij elke tussenstop bent
     r.legs.forEach((leg, li) => {
-        // Bij een tussenpunt (omleiding) kan de route omkeren: dat melden we als aanwijzing
+        // Na een tussenstop kan de route omkeren: dat melden we als aanwijzing
         if (li > 0) {
             const voor = r.legs[li - 1].steps.at(-1).maneuver.bearing_before;
             const na = leg.steps[0].maneuver.bearing_after;
             const verschil = Math.abs(((na - voor + 540) % 360) - 180);
             if (verschil > 150) {
-                keerpunten++;
                 stappen.push({
                     tekst: "Keer om",
                     pijl: "↶",
@@ -1157,6 +1388,16 @@ function verrijkRoute(r) {
             }
         }
         for (const s of leg.steps) {
+            if (s.maneuver.type === "arrive" && stopLegs.has(li)) {
+                stopPosities.push(positie);
+                stappen.push({
+                    tekst: `Tussenstop: ${stopLegs.get(li)}`,
+                    pijl: "📍",
+                    afstand: 0,
+                    positie,
+                    locatie: L.latLng(s.maneuver.location[1], s.maneuver.location[0]),
+                });
+            }
             const tussenpunt =
                 (s.maneuver.type === "arrive" && li < r.legs.length - 1) || (s.maneuver.type === "depart" && li > 0);
             if (!tussenpunt) {
@@ -1171,7 +1412,7 @@ function verrijkRoute(r) {
         }
     });
 
-    return { afstand: r.distance, duur: r.duration, coords, cum, schaal, stappen, keerpunten, blokkades: [], omleiding: false };
+    return { afstand: r.distance, duur: r.duration, coords, cum, schaal, stappen, stopPosities, blokkades: [] };
 }
 
 /** Kortste afstand van een punt tot de route, en waar op de route (meters vanaf de start). */
@@ -1197,89 +1438,40 @@ function puntOpRoute(p, route) {
     return beste;
 }
 
-const isDicht = (b) => b.melding.ernst === "hoog" && statusVan(b.melding) === "actief";
-
-/** Actieve blokkades (en die binnen 2 uur beginnen) die op of vlak naast de route liggen. */
+/** Barrières die op of vlak naast de route liggen (alleen ter waarschuwing; de route wordt niet aangepast). */
 function blokkadesOpRoute(route) {
-    const nu = new Date();
     // Tijdens het volgen: wat achter je ligt (of precies waar je staat) is niet meer relevant
     const vanaf = volgen && mijnLocatie ? puntOpRoute(mijnLocatie, route).positie + 30 : -Infinity;
     return meldingen
-        .filter((m) => {
-            const status = statusVan(m, nu);
-            return status === "actief" || (status === "gepland" && new Date(m.start) - nu < 2 * 3600_000);
-        })
         .map((m) => ({ melding: m, ...puntOpRoute(L.latLng(m.lat, m.lng), route) }))
-        .filter((b) => b.afstand <= (Number(b.melding.straal) || 0) + 25 && b.positie > vanaf)
+        .filter((b) => b.afstand <= 25 && b.positie > vanaf)
         .sort((a, b) => a.positie - b.positie);
 }
 
-// Afsluitingen wegen zwaar, andere blokkades tellen als 10 minuten extra, omkeren als 15 minuten
-function routeScore(r) {
-    return r.blokkades.filter(isDicht).length * 1e6 + r.blokkades.length * 600 + r.keerpunten * 900 + r.duur;
-}
+const ROUTE_TIMEOUT = 15_000;
+const routeCache = new Map(); // url -> { tijd, data }
 
+/** punten: [{ latlng, label }] (vertrek, tussenstops, bestemming). */
 async function haalRoutes(punten, profiel) {
-    const coords = punten.map((p) => `${p.lng.toFixed(6)},${p.lat.toFixed(6)}`).join(";");
+    const lijst = [];
+    const stopLegs = new Map(); // index van het routedeel dat bij een tussenstop eindigt -> naam
+    punten.forEach((p, i) => {
+        if (i > 0 && i < punten.length - 1) stopLegs.set(lijst.length - 1, p.label);
+        lijst.push(p.latlng);
+    });
+    const coords = lijst.map((p) => `${p.lng.toFixed(6)},${p.lat.toFixed(6)}`).join(";");
     const url =
         `https://routing.openstreetmap.de/${profiel}/route/v1/driving/${coords}` +
-        `?overview=full&geometries=geojson&steps=true&alternatives=${punten.length === 2}`;
-    const antwoord = await fetch(url);
-    if (!antwoord.ok) throw new Error(`Routeserver gaf ${antwoord.status}`);
-    const data = await antwoord.json();
-    return data.code === "Ok" ? data.routes.map(verrijkRoute) : [];
-}
-
-/**
- * OSRM kan geen gebieden vermijden. Daarom proberen we een omleiding via tussenpunten
- * links en rechts van de afsluiting.
- */
-async function zoekOmleiding(route, profiel, van, naar) {
-    const afsluiting = route.blokkades.find(isDicht);
-    const m = afsluiting.melding;
-    const a = route.coords[Math.max(0, afsluiting.index - 3)];
-    const b = route.coords[Math.min(route.coords.length - 1, afsluiting.index + 4)];
-    const k = Math.cos((m.lat * Math.PI) / 180);
-    let dx = (b[1] - a[1]) * k;
-    let dy = b[0] - a[0];
-    const lengte = Math.hypot(dx, dy) || 1;
-    dx /= lengte;
-    dy /= lengte;
-
-    const basis = Math.max((Number(m.straal) || 0) * 1.5, 250);
-    const tussenpunten = [];
-    for (const factor of [1, 3]) {
-        for (const kant of [1, -1]) {
-            const graden = (basis * factor * kant) / 111_320;
-            tussenpunten.push(L.latLng(m.lat + dx * graden, m.lng - (dy * graden) / k));
-        }
+        `?overview=full&geometries=geojson&steps=true&alternatives=${lijst.length === 2}`;
+    let data = routeCache.get(url);
+    if (!data || Date.now() - data.tijd > 10 * 60_000) {
+        const antwoord = await fetchMetTimeout(url, ROUTE_TIMEOUT);
+        if (!antwoord.ok) throw new Error(`Routeserver gaf ${antwoord.status}`);
+        data = { tijd: Date.now(), json: await antwoord.json() };
+        if (routeCache.size > 50) routeCache.delete(routeCache.keys().next().value);
+        routeCache.set(url, data);
     }
-    const resultaten = await Promise.allSettled(tussenpunten.map((t) => haalRoutes([van, t, naar], profiel)));
-    return resultaten.flatMap((r) => (r.status === "fulfilled" ? r.value : [])).map((r) => ({ ...r, omleiding: true }));
-}
-
-/**
- * Een tussenpunt in een zijstraat geeft soms een onnodig lusje (heen en weer door een blok).
- * Vind zo'n lus: twee punten die dicht bij elkaar liggen, maar ver uit elkaar langs de route.
- */
-function vindLus(route) {
-    const { coords, cum } = route;
-    for (let i = 0; i < coords.length; i++) {
-        for (let j = Math.min(coords.length - 1, i + 400); j > i; j--) {
-            const langs = cum[j] - cum[i];
-            if (langs < 150) break;
-            const recht = afstandM(coords[i], coords[j]);
-            if (recht < 40 && langs > 4 * recht) return [coords[i], coords[j]];
-        }
-    }
-    return null;
-}
-
-async function zonderLus(route, profiel, van, naar) {
-    const lus = vindLus(route);
-    if (!lus) return null;
-    const [nieuw] = await haalRoutes([van, L.latLng(lus[0]), L.latLng(lus[1]), naar], profiel);
-    return nieuw ? { ...nieuw, omleiding: true } : null;
+    return data.json.code === "Ok" ? data.json.routes.map((r) => verrijkRoute(r, stopLegs)) : [];
 }
 
 function gebruikersFout(tekst) {
@@ -1307,46 +1499,147 @@ async function bepaalPunt(veld, input) {
     return latlng;
 }
 
+/** Zoekt de coördinaten bij een tussenstop. Lege tussenstops slaan we over (null). */
+async function bepaalStop(stop) {
+    const tekst = stop.input.value.trim();
+    if (stop.punt && stop.punt.label === tekst) return stop.punt.latlng;
+    if (!tekst) return null;
+    const plek = await zoekPlek(tekst);
+    if (!plek) {
+        stop.input.focus();
+        throw gebruikersFout(`Geen plek gevonden voor tussenstop "${tekst}". Probeer een andere schrijfwijze.`);
+    }
+    stop.punt = { latlng: L.latLng(plek.lat, plek.lon), label: tekst };
+    return stop.punt.latlng;
+}
+
+// --- Tussenstops ---
+
+function renderStops() {
+    routeStopsEl.replaceChildren(...routeStops.map((s) => s.rij));
+    routeStops.forEach((s, i) => {
+        s.rij.querySelector(".route-stip").textContent = s.bezocht ? "✓" : i + 1;
+        s.rij.classList.toggle("bezocht", s.bezocht);
+        s.input.setAttribute("aria-label", `Tussenstop ${i + 1}`);
+        s.rij.querySelector(".route-stop-wis").setAttribute("aria-label", `Tussenstop ${i + 1} verwijderen`);
+    });
+    btnStopToevoegen.hidden = routeStops.length >= MAX_STOPS;
+}
+
+function voegStopToe(punt = null, { focus = true } = {}) {
+    if (routeStops.length >= MAX_STOPS) {
+        toast(`Je kunt maximaal ${MAX_STOPS} tussenstops toevoegen.`, "info");
+        return null;
+    }
+    const rij = document.createElement("div");
+    rij.className = "route-veld route-stop";
+    rij.innerHTML = `
+        <span class="route-stip route-stip-stop" aria-hidden="true"></span>
+        <input placeholder="Tussenstop" autocomplete="off">
+        <button type="button" class="route-stop-wis" title="Verwijderen">✕</button>`;
+    const stop = { rij, input: rij.querySelector("input"), punt, bezocht: false };
+    if (punt) stop.input.value = punt.label;
+    rij.querySelector(".route-stop-wis").addEventListener("click", () => verwijderStop(stop));
+    koppelSuggesties(stop.input, (r) => {
+        stop.punt = { latlng: r.latlng, label: r.titel };
+        naAdresGekozen();
+    });
+    routeStops.push(stop);
+    renderStops();
+    if (focus) stop.input.focus();
+    return stop;
+}
+
+function verwijderStop(stop) {
+    const telde = !!stop.punt && actieveRoute?.stops?.includes(stop);
+    routeStops = routeStops.filter((s) => s !== stop);
+    renderStops();
+    werkOpslaanKnopBij();
+    // Zat de stop in de berekende route? Dan meteen opnieuw berekenen.
+    if (telde) planRoute({ stil: volgen, vanaf: volgen ? mijnLocatie : null });
+}
+
+function wisStops() {
+    routeStops = [];
+    renderStops();
+}
+
+btnStopToevoegen.addEventListener("click", () => voegStopToe());
+
+// --- Adressuggesties in de routevelden ---
+
+/** Na het kiezen van een adres: route meteen (opnieuw) berekenen zodra er een bestemming is. */
+function naAdresGekozen() {
+    werkOpslaanKnopBij();
+    if (routeNaarInput.value.trim()) planRoute();
+    else routeNaarInput.focus();
+}
+
+koppelSuggesties(routeVanInput, (r) => {
+    routePunten.van = { latlng: r.latlng, label: r.titel };
+    naAdresGekozen();
+});
+koppelSuggesties(routeNaarInput, (r) => {
+    routePunten.naar = { latlng: r.latlng, label: r.titel };
+    naAdresGekozen();
+});
+
+/** Punt op de kaart als tussenstop toevoegen (vanuit de kaart-popup). */
+async function stopOpKaart(latlng) {
+    if (routeStops.length >= MAX_STOPS) {
+        toast(`Je kunt maximaal ${MAX_STOPS} tussenstops toevoegen.`, "info");
+        return;
+    }
+    const naam = (await wegnaamBij(latlng)) || "Punt op de kaart";
+    if (!voegStopToe({ latlng, label: naam }, { focus: false })) return;
+    planRoute({ stil: true, vanaf: volgen ? mijnLocatie : null });
+}
+
 const gekozenVervoer = () => routeForm.querySelector('input[name="vervoer"]:checked').value;
 
 async function planRoute({ vanaf = null, stil = false } = {}) {
-    if (routeBezig) return;
+    if (routeBezig) {
+        routeWachtrij = { vanaf, stil };
+        return;
+    }
     routeBezig = true;
     routePlanKnop.disabled = true;
-    routePlanKnop.textContent = "Route zoeken…";
+    const status = (tekst) => (routePlanKnop.textContent = tekst);
+    status("Adressen zoeken…");
 
     try {
-        const van = vanaf || (await bepaalPunt("van", routeVanInput));
-        const naar = await bepaalPunt("naar", routeNaarInput);
-        const profiel = ROUTE_PROFIELEN[gekozenVervoer()];
+        // Leeg vertrekpunt = mijn locatie. Die bepalen we tegelijk met het opzoeken van de adressen.
+        const vanLeeg = !vanaf && !routeVanInput.value.trim();
+        const locatie = vanLeeg ? vraagLocatie() : null;
+        locatie?.catch(() => {}); // fout wordt hieronder bij het wachten afgehandeld
 
-        let routes = await haalRoutes([van, naar], profiel);
-        if (!routes.length) throw gebruikersFout("Er is geen route gevonden tussen deze punten.");
-        routes.forEach((r) => (r.blokkades = blokkadesOpRoute(r)));
-
-        // Gaan alle routes door een afsluiting? Probeer er omheen te rijden.
-        if (routes.every((r) => r.blokkades.some(isDicht))) {
-            const snelste = routes[0];
-            const omleidingen = await zoekOmleiding(snelste, profiel, van, naar).catch(() => []);
-            for (const o of omleidingen) {
-                o.blokkades = blokkadesOpRoute(o);
-                const dubbel = routes.some((r) => Math.abs(r.afstand - o.afstand) < r.afstand * 0.01);
-                if (!dubbel && o.duur < snelste.duur * 3) routes.push(o);
-            }
-
-            // De beste omleidingen ontdoen van lusjes
-            routes.sort((a, b) => routeScore(a) - routeScore(b));
-            const metLus = routes.filter((r) => r.omleiding).slice(0, 2);
-            const opgeschoond = await Promise.all(metLus.map((r) => zonderLus(r, profiel, van, naar).catch(() => null)));
-            opgeschoond.forEach((o, i) => {
-                if (!o) return;
-                o.blokkades = blokkadesOpRoute(o);
-                // Beter dan het origineel? Dan vervangt hij die.
-                if (routeScore(o) < routeScore(metLus[i])) routes[routes.indexOf(metLus[i])] = o;
-            });
+        const vanAdres = vanaf || vanLeeg ? null : await bepaalPunt("van", routeVanInput);
+        // Tijdens het volgen slaan we tussenstops over waar je al geweest bent
+        const stops = [];
+        for (const stop of routeStops) {
+            if (vanaf && stop.bezocht) continue;
+            if (await bepaalStop(stop)) stops.push(stop);
         }
+        const naar = await bepaalPunt("naar", routeNaarInput);
+        if (vanLeeg) status("Locatie bepalen…");
+        const van = vanaf || vanAdres || (await locatie);
+        status("Route berekenen…");
+        const profiel = ROUTE_PROFIELEN[gekozenVervoer()];
+        const punten = [
+            { latlng: van, label: "Vertrek" },
+            ...stops.map((s) => s.punt),
+            { latlng: naar, label: "Bestemming" },
+        ];
 
-        routes.sort((a, b) => routeScore(a) - routeScore(b));
+        const routes = await haalRoutes(punten, profiel);
+        if (!routes.length) throw gebruikersFout("Er is geen route gevonden tussen deze punten.");
+        routes.forEach((r) => {
+            r.stops = stops;
+            r.punten = punten;
+            r.blokkades = blokkadesOpRoute(r);
+        });
+
+        routes.sort((a, b) => a.duur - b.duur);
         routeOpties = routes.slice(0, 3);
         kiesRoute(0, { zoom: !stil });
     } catch (err) {
@@ -1355,6 +1648,8 @@ async function planRoute({ vanaf = null, stil = false } = {}) {
         } else if (err?.PERMISSION_DENIED === 1 || err.message === "geen geolocatie") {
             // Melding over de locatie is al getoond
             routeVanInput.focus();
+        } else if (err.timeout) {
+            toast("Het duurde te lang om de route op te halen: de server reageert niet of erg traag. Probeer het zo nog eens.", "fout");
         } else {
             console.error(err);
             toast("De route kon niet berekend worden. Controleer je internetverbinding en probeer opnieuw.", "fout");
@@ -1363,6 +1658,11 @@ async function planRoute({ vanaf = null, stil = false } = {}) {
         routeBezig = false;
         routePlanKnop.disabled = false;
         routePlanKnop.textContent = "Route zoeken";
+        if (routeWachtrij) {
+            const volgende = routeWachtrij;
+            routeWachtrij = null;
+            planRoute(volgende);
+        }
     }
 }
 
@@ -1384,6 +1684,7 @@ function kiesRoute(index, { zoom = true } = {}) {
 }
 
 function tekenRoutes() {
+    if (routePuntSlepen) return;
     routeLaag.clearLayers();
     routeOpties.forEach((r, i) => {
         if (r === actieveRoute) return;
@@ -1394,17 +1695,72 @@ function tekenRoutes() {
     });
 
     const r = actieveRoute;
-    const kleur = r.blokkades.some(isDicht) ? "#e5294a" : "#0342df";
     L.polyline(r.coords, { color: "#fff", weight: 12, interactive: false }).addTo(routeLaag);
-    L.polyline(r.coords, { color: kleur, weight: 7, interactive: false }).addTo(routeLaag);
+    L.polyline(r.coords, { color: "#0342df", weight: 7, interactive: false }).addTo(routeLaag);
 
-    L.circleMarker(r.coords[0], {
-        radius: 7, color: "#fff", weight: 3, fillColor: "#051736", fillOpacity: 1, interactive: false,
-    }).addTo(routeLaag);
-    L.marker(r.coords.at(-1), {
-        icon: L.divIcon({ className: "", html: '<div class="route-doel">🏁</div>', iconSize: [36, 36], iconAnchor: [18, 18] }),
-        interactive: false,
-    }).addTo(routeLaag);
+    const punten = r.punten || [{ latlng: L.latLng(r.coords[0]) }, { latlng: L.latLng(r.coords.at(-1)) }];
+
+    // Vertrek: bolletje met het gekozen vervoer. Tijdens het volgen is dat je eigen locatie: niet versleepbaar.
+    const startHtml = `<div class="route-doel route-start">${(VERVOER[gekozenVervoer()] || VERVOER.auto).icoon}</div>`;
+    if (volgen) {
+        L.marker(r.coords[0], {
+            icon: L.divIcon({ className: "", html: startHtml, iconSize: [36, 36], iconAnchor: [18, 18] }),
+            interactive: false,
+            keyboard: false,
+        }).addTo(routeLaag);
+    } else {
+        routePuntMarker(punten[0].latlng, startHtml, 36, "Vertrek", (latlng, label) => {
+            routePunten.van = { latlng, label };
+            routeVanInput.value = label;
+        });
+    }
+
+    routePuntMarker(punten.at(-1).latlng, '<div class="route-doel">🏁</div>', 36, "Bestemming", (latlng, label) => {
+        routePunten.naar = { latlng, label };
+        routeNaarInput.value = label;
+    });
+
+    (r.stops || []).forEach((stop) => {
+        const nr = routeStops.indexOf(stop) + 1;
+        if (!nr) return;
+        const html = `<div class="route-stop-pin${stop.bezocht ? " bezocht" : ""}">${stop.bezocht ? "✓" : nr}</div>`;
+        routePuntMarker(stop.punt.latlng, html, 28, `Tussenstop ${nr}: ${stop.punt.label}`, (latlng, label) => {
+            stop.punt = { latlng, label };
+            stop.input.value = label;
+            stop.bezocht = false;
+            renderStops();
+        });
+    });
+}
+
+let routePuntSlepen = false; // zolang je een punt versleept, tekenen we de route niet opnieuw
+
+/** Marker voor een routepunt die je kunt verslepen; bijwerken(latlng, label) zet het nieuwe punt in het paneel. */
+function routePuntMarker(latlng, html, grootte, naam, bijwerken) {
+    const marker = L.marker(latlng, {
+        icon: L.divIcon({ className: "route-punt-sleep", html, iconSize: [grootte, grootte], iconAnchor: [grootte / 2, grootte / 2] }),
+        draggable: true,
+        autoPan: true,
+        keyboard: false,
+        zIndexOffset: 500,
+    })
+        .bindTooltip(`${escapeHtml(naam)}<br><small>Sleep om te verplaatsen</small>`, { direction: "top", offset: [0, -grootte / 2] })
+        .addTo(routeLaag);
+
+    marker.on("dragstart", () => {
+        routePuntSlepen = true;
+        marker.closeTooltip();
+    });
+    marker.on("dragend", async () => {
+        routePuntSlepen = false;
+        const nieuw = marker.getLatLng();
+        marker.getElement()?.classList.add("bezig");
+        const label = (await wegnaamBij(nieuw)) || "Punt op de kaart";
+        bijwerken(nieuw, label);
+        werkOpslaanKnopBij();
+        planRoute({ stil: true, vanaf: volgen ? mijnLocatie : null });
+    });
+    return marker;
 }
 
 function toonRouteInfo() {
@@ -1422,48 +1778,40 @@ function toonRouteInfo() {
             </li>`
         )
         .join("");
+    werkOpslaanKnopBij();
 }
 
 function toonRouteWaarschuwing() {
     const r = actieveRoute;
-    const snelsteDuur = Math.min(...routeOpties.map((o) => o.duur));
-    const ietsOmzeild = routeOpties.some((o) => o.blokkades.some(isDicht)) && !r.blokkades.some(isDicht);
     let html = "";
 
     if (r.blokkades.length) {
-        const dicht = r.blokkades.some(isDicht);
         const n = r.blokkades.length;
         const items = r.blokkades
             .map((b) => {
                 const m = b.melding;
-                const wanneer = statusVan(m) === "gepland" ? `vanaf ${formatDatum(m.start)}` : "nu";
                 return `<li><button type="button" data-blokkade="${m.id}">
-                    <span>${(TYPES[m.type] || TYPES.overig).icoon}</span>
-                    <span><b>${escapeHtml(m.titel)}</b><small>${ERNST[m.ernst].label} · ${wanneer}</small></span>
+                    <span>${impactVan(m).emoji}</span>
+                    <span><b>${escapeHtml(m.wat)}</b><small>Barrière ${escapeHtml(m.nr ?? "?")} · impact ${m.impact}/5</small></span>
                 </button></li>`;
             })
             .join("");
         html += `
-            <div class="route-melding ${dicht ? "route-melding-gevaar" : "route-melding-letop"}">
-                <strong>${dicht ? "⛔ Je route gaat door een afsluiting" : `⚠️ ${n} ${n === 1 ? "blokkade" : "blokkades"} op je route`}</strong>
+            <div class="route-melding route-melding-letop">
+                <strong>⚠️ ${n} ${n === 1 ? "barrière" : "barrières"} op je route</strong>
                 <ul>${items}</ul>
-                ${dicht ? "<p>We vonden geen route er omheen. Kijk bij de melding of er een omleiding is.</p>" : ""}
             </div>`;
     } else {
-        html += `<div class="route-melding route-melding-ok"><strong>✅ Geen blokkades op je route</strong></div>`;
+        html += `<div class="route-melding route-melding-ok"><strong>✅ Geen barrières op je route</strong></div>`;
     }
 
-    if (ietsOmzeild) {
-        const extra = Math.round((r.duur - snelsteDuur) / 60);
-        html += `<p class="route-noot">↪️ We sturen je om een afsluiting heen${extra > 0 ? ` (+${extra} min)` : ""}.</p>`;
-    }
     if (routeOpties.length > 1 && !volgen) {
         html += `<p class="route-noot">Tik op een grijze lijn op de kaart voor een andere route.</p>`;
     }
     routeWaarschuwing.innerHTML = html;
 }
 
-// Meldingen veranderd (of een minuut verder): blokkades op de route opnieuw bepalen
+// Barrières veranderd: opnieuw bepalen welke op de route liggen
 function routeBlokkadesBijwerken() {
     if (!actieveRoute) return;
     routeOpties.forEach((r) => (r.blokkades = blokkadesOpRoute(r)));
@@ -1482,19 +1830,22 @@ function wisRoute() {
 
 function openRoutePaneel() {
     zetPlaatsModus(false);
+    navigator.permissions
+        ?.query({ name: "geolocation" })
+        .then((p) => p.state === "granted" && navigator.geolocation && startLocatie(false))
+        .catch(() => {});
     routePaneel.hidden = false;
     meldPaneel.hidden = true;
-    btnRoute.classList.add("actief");
 }
 
 function sluitRoutePaneel() {
     stopVolgen();
     wisRoute();
     routeForm.reset();
+    wisStops();
     routePunten.van = routePunten.naar = null;
     routePaneel.hidden = true;
     meldPaneel.hidden = false;
-    btnRoute.classList.remove("actief");
 }
 
 /** Plan een route naar een punt (vanuit popups op de kaart). */
@@ -1505,13 +1856,10 @@ function routeNaar(latlng, label) {
     planRoute();
 }
 
+// "Route plannen" in het menu links; het routepaneel vervangt dan het menu (sluiten met ✕)
 btnRoute.addEventListener("click", () => {
-    if (routePaneel.hidden) {
-        openRoutePaneel();
-        routeNaarInput.focus();
-    } else {
-        sluitRoutePaneel();
-    }
+    openRoutePaneel();
+    routeNaarInput.focus();
 });
 document.getElementById("btn-route-sluit").addEventListener("click", sluitRoutePaneel);
 
@@ -1541,6 +1889,8 @@ document.getElementById("btn-route-wissel").addEventListener("click", () => {
     routePunten.naar = van && van.label === vanTekst ? van : null;
     routeVanInput.value = naarTekst;
     routeNaarInput.value = vanTekst;
+    routeStops.reverse();
+    renderStops();
     if (actieveRoute) planRoute();
 });
 
@@ -1600,6 +1950,8 @@ async function startVolgen() {
     volgKaartMee = true;
     huidigeStap = -1;
     gewaarschuwd.clear();
+    routeStops.forEach((s) => (s.bezocht = false));
+    renderStops();
     document.body.classList.add("volg-modus");
     zetPlaatsModus(false);
     zetMeldKnop(true);
@@ -1638,6 +1990,19 @@ function volgUpdate(nauwkeurigheid = 0) {
     const plek = puntOpRoute(mijnLocatie, r);
 
     if (volgKaartMee) map.panTo(mijnLocatie, { animate: true });
+
+    // Bij een tussenstop aangekomen?
+    (r.stops || []).forEach((stop, i) => {
+        if (stop.bezocht || r.stopPosities[i] === undefined) return;
+        const dichtbij = mijnLocatie.distanceTo(stop.punt.latlng) < 40;
+        if (dichtbij || (plek.positie > r.stopPosities[i] - 25 && plek.afstand < 40)) {
+            stop.bezocht = true;
+            renderStops();
+            tekenRoutes();
+            toast(`Tussenstop bereikt: ${stop.punt.label} 📍`, "succes", 4000);
+            spreek(`Je bent bij tussenstop ${stop.punt.label}.`);
+        }
+    });
 
     // Aangekomen?
     if (mijnLocatie.distanceTo(r.coords.at(-1)) < 30 || (r.afstand - plek.positie < 25 && plek.afstand < 40)) {
@@ -1686,14 +2051,14 @@ function volgUpdate(nauwkeurigheid = 0) {
         spreek(`${stap.tekst}.`);
     }
 
-    // Waarschuwen voor blokkades die eraan komen
+    // Waarschuwen voor barrières die eraan komen
     for (const b of r.blokkades) {
         const vooruit = b.positie - plek.positie;
         if (vooruit > -20 && vooruit < 600 && !gewaarschuwd.has(b.melding.id)) {
             gewaarschuwd.add(b.melding.id);
             const waar = vooruit < 50 ? "Hier" : `Over ${formatAfstand(vooruit)}`;
-            toast(`${waar}: ${b.melding.titel} (${ERNST[b.melding.ernst].label.toLowerCase()})`, "fout", 8000);
-            spreek(`Let op! ${vooruit < 50 ? "Hier" : `Over ${spreekAfstand(vooruit)}`}: ${b.melding.titel}.`);
+            toast(`${waar}: barrière ${b.melding.nr} – ${b.melding.wat} (impact ${b.melding.impact}/5)`, "fout", 8000);
+            spreek(`Let op! ${vooruit < 50 ? "Hier" : `Over ${spreekAfstand(vooruit)}`} is een barrière: ${b.melding.wat}.`);
         }
     }
 }
@@ -1713,6 +2078,225 @@ map.on("dragstart", () => {
     if (volgen) volgKaartMee = false;
 });
 
+// ---------- Opgeslagen routes ----------
+// We bewaren alleen de punten en het vervoer, zodat bij openen de route (en blokkades) opnieuw berekend worden.
+// Een opgeslagen route ziet er zo uit: { id, van: { lat, lng, label } | null (= mijn locatie), stops: [{ lat, lng, label }], naar: { lat, lng, label }, vervoer, opgeslagen }
+
+const VERVOER = {
+    auto: { label: "Auto", icoon: "🚗" },
+    fiets: { label: "Fiets", icoon: "🚲" },
+    lopen: { label: "Lopen", icoon: "🚶" },
+};
+const btnRouteOpslaan = document.getElementById("btn-route-opslaan");
+const opgeslagenLijst = document.getElementById("lijst");
+
+function laadRoutes() {
+    try {
+        return JSON.parse(localStorage.getItem(ROUTES_SLEUTEL)) || [];
+    } catch {
+        return [];
+    }
+}
+
+function bewaarRoutes() {
+    try {
+        localStorage.setItem(ROUTES_SLEUTEL, JSON.stringify(opgeslagenRoutes));
+        return true;
+    } catch (err) {
+        console.warn("Opslaan mislukt", err);
+        return false;
+    }
+}
+
+let opgeslagenRoutes = laadRoutes();
+
+const puntLabel = (p) => (p ? p.label : "Mijn locatie");
+const zelfdePunt = (a, b) => (!a && !b) || (a && b && L.latLng(a).distanceTo(b) < 10);
+
+/** De route zoals die nu in het paneel staat, of null als de velden niet meer bij de berekende route passen. */
+function huidigeRouteGegevens() {
+    if (!actieveRoute) return null;
+    const vanTekst = routeVanInput.value.trim();
+    const naarTekst = routeNaarInput.value.trim();
+    const { van, naar } = routePunten;
+    if (!naar || naar.label !== naarTekst) return null;
+    if (vanTekst && (!van || van.label !== vanTekst)) return null;
+    const gevuld = routeStops.filter((st) => st.input.value.trim());
+    if (gevuld.some((st) => !st.punt || st.punt.label !== st.input.value.trim())) return null;
+    const punt = (p) => ({ lat: p.latlng.lat, lng: p.latlng.lng, label: p.label });
+    return {
+        van: vanTekst ? punt(van) : null,
+        stops: gevuld.map((st) => punt(st.punt)),
+        naar: punt(naar),
+        vervoer: gekozenVervoer(),
+    };
+}
+
+function zoekOpgeslagen(g) {
+    return opgeslagenRoutes.find(
+        (r) =>
+            r.vervoer === g.vervoer &&
+            zelfdePunt(r.van, g.van) &&
+            zelfdePunt(r.naar, g.naar) &&
+            (r.stops || []).length === g.stops.length &&
+            g.stops.every((st, i) => zelfdePunt(r.stops[i], st))
+    );
+}
+
+function werkOpslaanKnopBij() {
+    const g = huidigeRouteGegevens();
+    const al = g && zoekOpgeslagen(g);
+    btnRouteOpslaan.textContent = al ? "★ Opgeslagen" : "☆ Opslaan";
+    btnRouteOpslaan.title = al ? `Opgeslagen als "${routeNaam(al)}" — tik om niet meer op te slaan` : "Route opslaan";
+    btnRouteOpslaan.classList.toggle("opgeslagen", !!al);
+}
+
+/** Naam van een opgeslagen route; oudere routes zonder naam heten naar hun bestemming. */
+const routeNaam = (r) => r.naam || `Naar ${r.naar.label}`;
+
+function renderOpgeslagen() {
+    document.getElementById("aantal").textContent = opgeslagenRoutes.length;
+    document.getElementById("leeg").hidden = opgeslagenRoutes.length > 0;
+
+    opgeslagenLijst.innerHTML = [...opgeslagenRoutes]
+        .sort((a, b) => b.opgeslagen - a.opgeslagen)
+        .map((r) => {
+            const v = VERVOER[r.vervoer] || VERVOER.auto;
+            return `
+            <li class="route-item">
+                <button class="lijst-item" type="button" data-route="${r.id}" style="--kleur:#0342df">
+                    <span class="lijst-icoon">${v.icoon}</span>
+                    <span class="lijst-tekst">
+                        <strong>${escapeHtml(routeNaam(r))}</strong>
+                        <small>${escapeHtml(puntLabel(r.van))} → ${escapeHtml(r.naar.label)}</small>
+                        ${r.stops?.length ? `<small>via ${r.stops.map((st) => escapeHtml(st.label)).join(", ")}</small>` : ""}
+                        <span class="lijst-tags">
+                            <span class="tag">${v.label}</span>
+                            <span class="tag">Opgeslagen ${formatDatum(r.opgeslagen)}</span>
+                        </span>
+                    </span>
+                </button>
+                <span class="route-item-knoppen">
+                    <button class="route-item-knop" type="button" data-hernoem-route="${r.id}" aria-label="Route ${escapeHtml(routeNaam(r))} hernoemen" title="Naam wijzigen">✏️</button>
+                    <button class="route-item-knop" type="button" data-wis-route="${r.id}" aria-label="Route ${escapeHtml(routeNaam(r))} verwijderen" title="Verwijderen">🗑️</button>
+                </span>
+            </li>`;
+        })
+        .join("");
+}
+
+btnRouteOpslaan.addEventListener("click", async () => {
+    const g = huidigeRouteGegevens();
+    if (!g) {
+        toast("Zoek de route eerst opnieuw, de velden zijn aangepast.", "info");
+        return;
+    }
+    const al = zoekOpgeslagen(g);
+    if (al) {
+        opgeslagenRoutes = opgeslagenRoutes.filter((r) => r !== al);
+        bewaarRoutes();
+        toast("Route niet meer opgeslagen", "info", 3000);
+    } else {
+        const standaard = `Naar ${g.naar.label}`;
+        const naam = await vraagTekst({
+            titel: "Route opslaan",
+            tekst: "Geef je route een naam, zodat je hem makkelijk terugvindt.",
+            waarde: standaard,
+            placeholder: "Bijv. Naar mijn werk",
+            okTekst: "Opslaan",
+            icoon: "⭐",
+        });
+        if (naam === null) return;
+        opgeslagenRoutes = [
+            ...opgeslagenRoutes,
+            {
+                id: crypto.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
+                naam: naam || standaard,
+                ...g,
+                opgeslagen: Date.now(),
+            },
+        ];
+        if (!bewaarRoutes()) {
+            opgeslagenRoutes = opgeslagenRoutes.slice(0, -1);
+            toast("Opslaan mislukt: de opslag in deze browser is vol.", "fout", 8000);
+            return;
+        }
+        toast(`"${naam || standaard}" opgeslagen ★`, "succes", 3000);
+    }
+    renderOpgeslagen();
+    werkOpslaanKnopBij();
+});
+
+/** Opent een opgeslagen route in het routepaneel en berekent hem opnieuw. */
+function openOpgeslagenRoute(r) {
+    stopVolgen();
+    wisRoute();
+    openRoutePaneel();
+    const punt = (p) => p && { latlng: L.latLng(p.lat, p.lng), label: p.label };
+    routePunten.van = punt(r.van);
+    routePunten.naar = punt(r.naar);
+    routeVanInput.value = r.van ? r.van.label : "";
+    routeNaarInput.value = r.naar.label;
+    wisStops();
+    (r.stops || []).forEach((st) => voegStopToe(punt(st), { focus: false }));
+    const radio = routeForm.querySelector(`input[name="vervoer"][value="${r.vervoer}"]`);
+    if (radio) radio.checked = true;
+    planRoute();
+}
+
+opgeslagenLijst.addEventListener("click", async (e) => {
+    const hernoem = e.target.closest("[data-hernoem-route]");
+    if (hernoem) {
+        const r = opgeslagenRoutes.find((x) => x.id === hernoem.dataset.hernoemRoute);
+        if (!r) return;
+        const naam = await vraagTekst({
+            titel: "Naam wijzigen",
+            waarde: routeNaam(r),
+            placeholder: "Bijv. Naar mijn werk",
+            okTekst: "Opslaan",
+        });
+        if (!naam || naam === routeNaam(r)) return;
+        const vorige = r.naam;
+        r.naam = naam;
+        if (!bewaarRoutes()) {
+            r.naam = vorige;
+            toast("Opslaan mislukt: de opslag in deze browser is vol.", "fout", 8000);
+            return;
+        }
+        renderOpgeslagen();
+        werkOpslaanKnopBij();
+        return;
+    }
+    const wis = e.target.closest("[data-wis-route]");
+    if (wis) {
+        const r = opgeslagenRoutes.find((x) => x.id === wis.dataset.wisRoute);
+        if (!r) return;
+        bevestig({
+            titel: "Route verwijderen?",
+            tekst: `"${routeNaam(r)}" wordt uit je opgeslagen routes gehaald.`,
+            okTekst: "Ja, verwijderen",
+            icoon: "🗑️",
+            gevaar: true,
+        }).then((ja) => {
+            if (!ja) return;
+            opgeslagenRoutes = opgeslagenRoutes.filter((x) => x.id !== r.id);
+            bewaarRoutes();
+            renderOpgeslagen();
+            toast("Route verwijderd", "succes", 3000);
+        });
+        return;
+    }
+    const knop = e.target.closest("[data-route]");
+    const r = knop && opgeslagenRoutes.find((x) => x.id === knop.dataset.route);
+    if (r) openOpgeslagenRoute(r);
+});
+
+// Opslaan-knop bijwerken als er een nieuwe route getoond wordt of de velden veranderen
+routeForm.addEventListener("input", werkOpslaanKnopBij);
+routeForm.addEventListener("change", werkOpslaanKnopBij);
+
+renderOpgeslagen();
+
 // ---------- Hier melden (tijdens het volgen van een route) ----------
 // Opent het gewone meldformulier op de plek waar je was toen je op de knop drukte.
 
@@ -1720,7 +2304,8 @@ map.on("dragstart", () => {
 async function wegnaamBij(punt) {
     try {
         const url = `https://nominatim.openstreetmap.org/reverse?format=json&zoom=17&lat=${punt.lat}&lon=${punt.lng}`;
-        const { address: a = {} } = await (await fetch(url, { headers: { "Accept-Language": "nl" } })).json();
+        const antwoord = await fetchMetTimeout(url, 5_000, { headers: { "Accept-Language": "nl" } });
+        const { address: a = {} } = await antwoord.json();
         const weg = a.road || a.pedestrian || a.cycleway || a.footway || a.path;
         const plaats = a.village || a.town || a.city || a.municipality;
         return weg ? [weg, plaats].filter(Boolean).join(", ") : null;
@@ -1738,16 +2323,8 @@ async function openSnelMelding() {
         return; // melding over de locatie is al getoond
     }
     openFormulier(hier);
-    document.getElementById("dialoog-titel").textContent = "Hier melden";
-    const locatieTekst = document.getElementById("locatie-tekst");
-    locatieTekst.textContent = "Op je huidige locatie";
-
-    const naam = await wegnaamBij(hier);
-    if (naam && dialoog.open && gekozenLocatie === hier) locatieTekst.textContent = naam;
 }
 
 // ---------- Start ----------
 
 render();
-// Status (gepland → actief → verlopen) elke minuut bijwerken
-setInterval(render, 60_000);

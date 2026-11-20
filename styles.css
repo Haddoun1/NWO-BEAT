@@ -249,13 +249,11 @@ body {
     background: var(--c, var(--grijs));
 }
 
-.chip-actief { --c: var(--actief); }
-.chip-gepland { --c: var(--gepland); }
-.chip-verlopen { --c: var(--verlopen); }
+.chip-permanent { --c: var(--midnight); }
+.chip-tijdelijk { --c: var(--gepland); }
 
-.chip-actief input:checked + span,
-.chip-gepland input:checked + span,
-.chip-verlopen input:checked + span {
+.chip-permanent input:checked + span,
+.chip-tijdelijk input:checked + span {
     background: var(--c);
 }
 
@@ -661,17 +659,14 @@ textarea {
 
 .marker span {
     transform: rotate(45deg);
-    font-size: 18px;
+    font-size: 15px;
+    font-weight: 700;
     line-height: 1;
+    color: var(--midnight);
 }
 
-.marker-gepland {
+.marker-tijdelijk {
     border-style: dashed;
-}
-
-.marker-verlopen {
-    opacity: 0.5;
-    filter: grayscale(1);
 }
 
 .marker-puls::after {
@@ -772,9 +767,8 @@ textarea {
     color: #fff;
 }
 
-.badge-actief { background: var(--actief); }
-.badge-gepland { background: var(--gepland); }
-.badge-verlopen { background: var(--verlopen); }
+.badge-permanent { background: var(--midnight); }
+.badge-tijdelijk { background: var(--gepland); }
 
 .popup dl {
     display: grid;
@@ -931,10 +925,11 @@ textarea {
     font-weight: 700;
 }
 
-.locatie-info {
-    margin: 4px 0 0;
-    font-size: 0.8rem;
-    font-weight: 700;
+.dialoog-subkop {
+    margin: 6px 0 0;
+    max-width: 46ch;
+    font-size: 0.85rem;
+    line-height: 1.4;
     color: var(--grijs);
 }
 
@@ -1063,206 +1058,95 @@ textarea {
     50% { opacity: 0.25; }
 }
 
-.groot-veld {
-    font-size: 1.05rem;
-    font-weight: 700;
-}
-
-.rij {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-}
-
-.mini-label {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    font-size: 0.82rem;
-    font-weight: 600;
+/* Barrièrekaart: vraag onder de kop, nummer, impact, permanent/tijdelijk */
+.stap-vraag {
+    margin: -6px 0 0;
+    font-size: 0.88rem;
+    font-style: italic;
     color: var(--grijs);
 }
 
-/* Type-tegels */
-.type-tegels {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 8px;
+.nr-veld {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 700;
 }
 
-.type-tegel {
+.nr-veld input {
+    width: 96px;
+    font-weight: 700;
+}
+
+.impact-keuze {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+    border-radius: 18px;
+}
+
+.impact-optie {
     position: relative;
     cursor: pointer;
 }
 
-.type-tegel input {
+.impact-optie input {
     position: absolute;
     opacity: 0;
-    /* blijft focusbaar en meldt "verplicht" netjes */
-    width: 100%;
-    height: 100%;
-    margin: 0;
     pointer-events: none;
 }
 
-.type-tegel > span {
-    height: 100%;
+.impact-optie > span {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    gap: 4px;
-    padding: 12px 6px;
-    text-align: center;
-    font-size: 0.76rem;
-    font-weight: 600;
-    line-height: 1.2;
-    border-radius: 18px;
-    background: var(--veld);
-    border: 2px solid transparent;
-    transition: transform 0.2s var(--veer), background 0.2s, border-color 0.2s;
-}
-
-.type-emoji {
-    font-size: 1.7rem;
-    transition: transform 0.3s var(--veer);
-}
-
-.type-tegel:hover > span {
-    transform: translateY(-2px);
-    background: var(--lavendel);
-}
-
-.type-tegel:hover .type-emoji {
-    transform: scale(1.15) rotate(-8deg);
-}
-
-.type-tegel input:checked + span {
-    background: #fff;
-    border-color: var(--paars);
-    box-shadow: 0 6px 16px rgba(3, 66, 223, 0.25);
-    transform: scale(1.04);
-}
-
-.type-tegel input:checked + span .type-emoji {
-    transform: scale(1.2);
-}
-
-.type-tegel input:focus-visible + span {
-    box-shadow: 0 0 0 4px rgba(3, 66, 223, 0.25);
-}
-
-/* Ernst-keuze */
-.ernst-keuze {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
-}
-
-.ernst-optie {
-    position: relative;
-    cursor: pointer;
-}
-
-.ernst-laag { --e: #f5b400; }
-.ernst-middel { --e: #ff6631; }
-.ernst-hoog { --e: #e5294a; }
-
-.ernst-optie input {
-    position: absolute;
-    opacity: 0;
-    pointer-events: none;
-}
-
-.ernst-optie > span {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
     gap: 2px;
-    padding: 12px;
-    border-radius: 18px;
+    padding: 10px 4px;
+    border-radius: 16px;
     background: var(--veld);
     border: 2px solid transparent;
     transition: transform 0.2s var(--veer), background 0.2s, border-color 0.2s;
 }
 
-.ernst-optie b {
-    font-size: 0.92rem;
-    font-weight: 700;
+.impact-emoji {
+    font-size: 1.7rem;
+    line-height: 1.1;
 }
 
-.ernst-optie small {
-    font-size: 0.72rem;
-    font-weight: 700;
-    color: var(--grijs);
+.impact-optie b {
+    font-size: 0.85rem;
 }
 
-.ernst-optie:hover > span {
+.impact-optie:hover > span {
     transform: translateY(-2px);
 }
 
-.ernst-optie input:checked + span {
+.impact-optie input:checked + span {
     background: color-mix(in srgb, var(--e) 16%, white);
     border-color: var(--e);
-    transform: scale(1.03);
+    transform: scale(1.06);
 }
 
-.ernst-optie input:focus-visible + span {
+.impact-optie input:focus-visible + span {
     box-shadow: 0 0 0 4px color-mix(in srgb, var(--e) 30%, transparent);
 }
 
-/* Meer details */
-.meer {
-    border-radius: 18px;
-    background: var(--veld);
-}
-
-.meer summary {
-    list-style: none;
-    cursor: pointer;
-    padding: 14px 16px;
-    font-weight: 700;
+.impact-schaal {
     display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.meer summary::-webkit-details-marker {
-    display: none;
-}
-
-.meer summary::before {
-    content: "+";
-    width: 24px;
-    height: 24px;
-    display: grid;
-    place-items: center;
-    border-radius: 50%;
-    background: #fff;
-    color: var(--paars);
-    font-weight: 700;
-    transition: transform 0.3s var(--veer);
-}
-
-.meer[open] summary::before {
-    transform: rotate(45deg);
-}
-
-.meer summary small {
-    font-weight: 700;
-    font-size: 0.78rem;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 0.76rem;
+    font-weight: 600;
     color: var(--grijs);
 }
 
-.meer-inhoud {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    padding: 0 16px 16px;
+.impact-schaal span:last-child {
+    text-align: right;
 }
 
-.meer-inhoud input {
-    background: #fff;
+.impact-keuze.ongeldig .impact-optie > span {
+    border-color: color-mix(in srgb, var(--gevaar) 45%, white);
+    border-style: dashed;
 }
 
 /* ---------- Foto's ---------- */
@@ -1527,6 +1411,12 @@ textarea {
     font-weight: 700;
 }
 
+.bevestig-invoer {
+    margin-top: 16px;
+    text-align: center;
+    font-weight: 600;
+}
+
 .bevestig-inhoud p {
     margin: 0;
     color: var(--grijs);
@@ -1586,11 +1476,6 @@ textarea.ongeldig,
     background: color-mix(in srgb, var(--gevaar) 6%, white);
 }
 
-.type-tegels.ongeldig .type-tegel > span {
-    border-color: color-mix(in srgb, var(--gevaar) 45%, white);
-    border-style: dashed;
-}
-
 .schud {
     animation: schud 0.45s ease-in-out;
 }
@@ -1605,22 +1490,15 @@ textarea.ongeldig,
 
 /* ---------- Route ---------- */
 
-/* Route-knop: boven de locatieknop */
-.route-knop {
-    bottom: 172px;
-}
-
-.route-knop.actief {
-    color: #fff;
-    background: var(--ink-blauw);
-}
-
-.route-knop:hover {
-    color: var(--ink-blauw);
-}
-
-.route-knop.actief:hover {
-    color: #fff;
+/* Route-knop in het menu links, onder de zoekbalk */
+.route-menu-knop {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 18px;
+    flex-shrink: 0;
 }
 
 .route-kop {
@@ -2008,10 +1886,6 @@ textarea.ongeldig,
         height: 46px;
     }
 
-    .route-knop {
-        top: 196px;
-    }
-
     .route-paneel {
         max-height: 52vh;
     }
@@ -2026,18 +1900,8 @@ textarea.ongeldig,
         top: 84px;
     }
 
-    .type-tegels {
-        grid-template-columns: repeat(2, 1fr);
-    }
-
-    .ernst-optie small {
-        display: none;
-    }
-}
-
-@media (max-width: 420px) {
-    .rij {
-        grid-template-columns: 1fr;
+    .impact-emoji {
+        font-size: 1.4rem;
     }
 }
 
@@ -2048,4 +1912,251 @@ textarea.ongeldig,
         animation: none !important;
         transition: none !important;
     }
+}
+
+/* ---------- Opgeslagen routes ---------- */
+
+.route-item {
+    position: relative;
+}
+
+.route-item .lijst-item {
+    padding-right: 92px;
+}
+
+.route-item-knoppen {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    display: flex;
+    gap: 2px;
+}
+
+.route-item-knop {
+    width: 36px;
+    height: 36px;
+    display: grid;
+    place-items: center;
+    font-size: 1rem;
+    border: none;
+    border-radius: 12px;
+    background: transparent;
+    cursor: pointer;
+    opacity: 0.55;
+    transition: opacity 0.2s, background 0.2s;
+}
+
+.route-item-knop:hover,
+.route-item-knop:focus-visible {
+    opacity: 1;
+    background: var(--veld);
+}
+
+.route-acties #btn-route-opslaan {
+    padding: 12px 14px;
+    white-space: nowrap;
+}
+
+.route-acties #btn-route-opslaan.opgeslagen {
+    color: #b88700;
+}
+
+/* ---------- Tussenstops ---------- */
+
+.route-stops {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.route-stops:empty {
+    display: none;
+}
+
+.route-stop input {
+    padding-right: 40px;
+}
+
+.route-stip-stop {
+    width: 20px;
+    height: 20px;
+    left: 8px;
+    display: grid;
+    place-items: center;
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: #fff;
+    background: var(--midnight);
+}
+
+.route-stop.bezocht .route-stip-stop {
+    background: var(--actief);
+}
+
+.route-stop.bezocht input {
+    color: var(--grijs);
+    text-decoration: line-through;
+}
+
+.route-stop-wis {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    width: 30px;
+    height: 30px;
+    transform: translateY(-50%);
+    display: grid;
+    place-items: center;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--grijs);
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.route-stop-wis:hover,
+.route-stop-wis:focus-visible {
+    background: var(--lavendel);
+    color: var(--tekst);
+}
+
+.route-stop-toevoegen {
+    align-self: flex-start;
+    margin-top: -4px;
+    padding: 6px 10px;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--ink-blauw);
+    font: inherit;
+    font-size: 0.88rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.route-stop-toevoegen:hover,
+.route-stop-toevoegen:focus-visible {
+    background: var(--lavendel);
+}
+
+.route-stop-toevoegen[hidden] {
+    display: none;
+}
+
+/* Tussenstop op de kaart */
+.route-stop-pin {
+    width: 28px;
+    height: 28px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--midnight);
+    border: 3px solid #fff;
+    box-shadow: var(--schaduw-klein);
+    color: #fff;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.route-stop-pin.bezocht {
+    background: var(--actief);
+}
+
+/* ---------- Adressuggesties ---------- */
+
+.suggesties {
+    position: fixed;
+    z-index: 2000;
+    margin: 0;
+    padding: 6px;
+    list-style: none;
+    max-height: min(320px, 50vh);
+    overflow-y: auto;
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: var(--schaduw);
+    scrollbar-width: thin;
+}
+
+.suggesties[hidden] {
+    display: none;
+}
+
+.suggesties li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 10px;
+    border-radius: 12px;
+    cursor: pointer;
+}
+
+.suggesties li:hover,
+.suggesties li[aria-selected="true"] {
+    background: var(--lavendel);
+}
+
+.suggestie-icoon {
+    flex-shrink: 0;
+    width: 30px;
+    height: 30px;
+    display: grid;
+    place-items: center;
+    border-radius: 10px;
+    background: var(--veld);
+    font-size: 0.95rem;
+}
+
+.suggestie-tekst {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.suggestie-tekst strong {
+    font-size: 0.92rem;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.suggestie-tekst small {
+    font-size: 0.76rem;
+    color: var(--grijs);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ---------- Routepunten verslepen ---------- */
+
+.route-punt-sleep {
+    cursor: grab;
+}
+
+.route-punt-sleep.leaflet-drag-target,
+.route-punt-sleep:active {
+    cursor: grabbing;
+}
+
+.route-punt-sleep > div {
+    transition: transform 0.15s var(--veer);
+}
+
+.route-punt-sleep:hover > div,
+.route-punt-sleep.leaflet-drag-target > div {
+    transform: scale(1.15);
+}
+
+.route-punt-sleep.bezig > div {
+    opacity: 0.6;
+}
+
+/* Vertrekpunt: zelfde bolletje als de bestemming, maar met een donkere rand */
+.route-start {
+    border-color: var(--midnight);
 }

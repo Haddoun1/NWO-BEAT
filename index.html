@@ -34,17 +34,25 @@
             </form>
 
             <section class="filters" aria-label="Filters">
-                <div class="chips" role="group" aria-label="Status">
-                    <label class="chip chip-actief"><input type="checkbox" name="status" value="actief" checked><span><i class="stip"></i>Actief</span></label>
-                    <label class="chip chip-gepland"><input type="checkbox" name="status" value="gepland" checked><span><i class="stip"></i>Gepland</span></label>
-                    <label class="chip chip-verlopen"><input type="checkbox" name="status" value="verlopen"><span><i class="stip"></i>Verlopen</span></label>
-                </div>            </section>
+                <div class="chips" role="group" aria-label="Soort barrière">
+                    <label class="chip chip-permanent"><input type="checkbox" name="duur" value="permanent" checked><span><i class="stip"></i>Permanent</span></label>
+                    <label class="chip chip-tijdelijk"><input type="checkbox" name="duur" value="tijdelijk" checked><span><i class="stip"></i>Tijdelijk</span></label>
+                </div>
+            </section>
 
-            <h2 class="lijst-titel">Meldingen <span id="aantal" class="aantal">0</span></h2>
+            <h2 class="lijst-titel">Opgeslagen routes <span id="aantal" class="aantal">0</span></h2>
+            <button id="btn-route" class="btn btn-primary route-menu-knop" type="button">
+                <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                    <circle cx="6" cy="19" r="2.5" fill="currentColor"/>
+                    <path d="M18 2.5a3.5 3.5 0 0 0-3.5 3.5c0 2.6 3.5 6 3.5 6s3.5-3.4 3.5-6A3.5 3.5 0 0 0 18 2.5Z" fill="currentColor"/>
+                    <path d="M8.5 19H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="0.1 3.6"/>
+                </svg>
+                Route plannen
+            </button>
             <ul id="lijst" class="lijst"></ul>
             <div id="leeg" class="leeg" hidden>
-                <div class="leeg-icoon">🗺️</div>
-                <p><strong>Alles rustig hier!</strong><br>Klik op de kaart om een blokkade te melden.</p>
+                <div class="leeg-icoon">🧭</div>
+                <p><strong>Nog geen routes opgeslagen</strong><br>Plan een route en tik op ☆ Opslaan om hem hier terug te vinden.</p>
             </div>
         </aside>
 
@@ -61,12 +69,14 @@
                         <span class="route-stip route-stip-van" aria-hidden="true"></span>
                         <input id="route-van" placeholder="📍 Mijn locatie" aria-label="Vertrekpunt (leeg = mijn locatie)" autocomplete="off">
                     </label>
+                    <div id="route-stops" class="route-stops"></div>
                     <label class="route-veld">
                         <span class="route-stip route-stip-naar" aria-hidden="true"></span>
                         <input id="route-naar" placeholder="Waar wil je heen?" aria-label="Bestemming" autocomplete="off">
                     </label>
                     <button id="btn-route-wissel" class="route-wissel" type="button" aria-label="Vertrek en bestemming omdraaien" title="Omdraaien">⇅</button>
                 </div>
+                <button id="btn-stop-toevoegen" class="route-stop-toevoegen" type="button">＋ Tussenstop toevoegen</button>
                 <div class="chips" role="radiogroup" aria-label="Vervoer">
                     <label class="chip"><input type="radio" name="vervoer" value="auto" checked><span>🚗 Auto</span></label>
                     <label class="chip"><input type="radio" name="vervoer" value="fiets"><span>🚲 Fiets</span></label>
@@ -93,6 +103,7 @@
 
                 <div class="route-acties">
                     <button id="btn-volgen" class="btn btn-primary" type="button">▶ Route volgen</button>
+                    <button id="btn-route-opslaan" class="btn btn-licht" type="button" title="Route opslaan">☆ Opslaan</button>
                     <button id="btn-geluid" class="btn btn-licht" type="button" aria-pressed="true" title="Gesproken aanwijzingen">🔊</button>
                 </div>
 
@@ -100,14 +111,6 @@
             </div>
         </section>
     </div>
-
-    <button id="btn-route" class="locatie-knop route-knop" type="button" aria-label="Route zoeken" title="Route zoeken">
-        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-            <circle cx="6" cy="19" r="2.5" fill="currentColor"/>
-            <path d="M18 2.5a3.5 3.5 0 0 0-3.5 3.5c0 2.6 3.5 6 3.5 6s3.5-3.4 3.5-6A3.5 3.5 0 0 0 18 2.5Z" fill="currentColor"/>
-            <path d="M8.5 19H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="0.1 3.6"/>
-        </svg>
-    </button>
 
     <button id="btn-locatie" class="locatie-knop" type="button" aria-label="Toon mijn locatie" title="Toon mijn locatie">
         <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
@@ -117,74 +120,80 @@
         </svg>
     </button>
 
-    <button id="btn-nieuw" class="fab" type="button" aria-label="Blokkade melden">
+    <button id="btn-nieuw" class="fab" type="button" aria-label="Barrière melden">
         <span class="fab-plus">+</span><span class="fab-tekst">Melden</span>
     </button>
 
     <div id="plaats-hint" class="plaats-hint" hidden>
-        <span class="hint-pin">📍</span> Tik op de kaart waar de blokkade is
+        <span class="hint-pin">📍</span> Tik op de kaart waar de barrière is
         <button id="btn-annuleer-plaats" class="btn btn-klein btn-licht" type="button">Annuleer</button>
     </div>
 
-    <!-- Melding toevoegen / bewerken -->
+    <!-- Barrièrekaart: barrière melden / bewerken -->
     <dialog id="dialoog" class="dialoog">
         <form id="melding-form" novalidate>
             <div class="dialoog-kop">
                 <div>
-                    <h2 id="dialoog-titel">Blokkade melden</h2>
-                    <p class="locatie-info">📍 <span id="locatie-tekst"></span></p>
+                    <h2 id="dialoog-titel">Barrièrekaart</h2>
+                    <p class="dialoog-subkop">Gebruik deze kaart als de expert onderweg een barrière ervaart. Je kunt de antwoorden hier opschrijven en tegelijkertijd opnemen met je telefoon.</p>
                 </div>
                 <button class="sluit-knop" type="button" id="btn-sluit" aria-label="Sluiten">✕</button>
             </div>
 
             <div class="dialoog-inhoud">
-                <fieldset class="stap">
-                    <legend>Wat is er aan de hand?</legend>
-                    <div id="type-keuze" class="type-tegels"></div>
-                </fieldset>
+                <p id="dicteer-status" class="dicteer-status" hidden role="status"><span class="opname-stip"></span> <span id="dicteer-tekst"></span></p>
+
+                <label class="nr-veld">Barrière nr.
+                    <input name="nr" type="number" min="1" step="1" inputmode="numeric">
+                </label>
 
                 <fieldset class="stap">
-                    <legend>Hoe erg is het?</legend>
-                    <div class="ernst-keuze">
-                        <label class="ernst-optie ernst-laag">
-                            <input type="radio" name="ernst" value="laag" required>
-                            <span><b>🟡 Hinder</b><small>Doorgang mogelijk</small></span>
-                        </label>
-                        <label class="ernst-optie ernst-middel">
-                            <input type="radio" name="ernst" value="middel" checked>
-                            <span><b>🟠 Beperkt</b><small>Lastig te passeren</small></span>
-                        </label>
-                        <label class="ernst-optie ernst-hoog">
-                            <input type="radio" name="ernst" value="hoog">
-                            <span><b>🔴 Dicht</b><small>Volledig geblokkeerd</small></span>
-                        </label>
-                    </div>
-                </fieldset>
-
-                <fieldset class="stap">
-                    <legend>Vertel er iets over</legend>
+                    <legend>Wat is de barrière?</legend>
+                    <p class="stap-vraag">“Wat werkt hier niet voor jou?”</p>
                     <div class="dicteer-veld">
-                        <input name="titel" class="groot-veld" required maxlength="80" aria-label="Titel"
-                            placeholder="Korte titel, bijv. Dorpsstraat afgesloten">
-                        <button type="button" class="mic-knop" data-dicteer="titel" aria-label="Titel inspreken" title="Inspreken"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3" fill="currentColor"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+                        <textarea name="wat" rows="2" aria-label="Wat is de barrière?" required maxlength="300"></textarea>
+                        <button type="button" class="mic-knop" data-dicteer="wat" aria-label="Wat is de barrière? inspreken" title="Inspreken"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3" fill="currentColor"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
                     </div>
-                    <div class="dicteer-veld">
-                        <textarea name="omschrijving" rows="3" aria-label="Omschrijving"
-                            placeholder="Wat moeten anderen weten? Typ, of tik op de microfoon om in te spreken"></textarea>
-                        <button type="button" class="mic-knop" data-dicteer="omschrijving" aria-label="Omschrijving inspreken" title="Inspreken"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3" fill="currentColor"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
-                    </div>
-                    <p id="dicteer-status" class="dicteer-status" hidden role="status"><span class="opname-stip"></span> <span id="dicteer-tekst"></span></p>
                 </fieldset>
 
                 <fieldset class="stap">
-                    <legend>Wanneer?</legend>
-                    <div class="rij">
-                        <label class="mini-label">🟢 Vanaf
-                            <input name="start" type="datetime-local" required>
-                        </label>
-                        <label class="mini-label">🏁 Tot (verwacht)
-                            <input name="eind" type="datetime-local">
-                        </label>
+                    <legend>Locatie</legend>
+                    <p class="stap-vraag stap-hint">Waar is het precies? Noteer een herkenningspunt of adres.</p>
+                    <div class="dicteer-veld">
+                        <input name="locatie" aria-label="Locatie" maxlength="200">
+                        <button type="button" class="mic-knop" data-dicteer="locatie" aria-label="Locatie inspreken" title="Inspreken"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3" fill="currentColor"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+                    </div>
+                    <div class="chips duur-keuze" role="radiogroup" aria-label="Permanent of tijdelijk">
+                        <label class="chip"><input type="radio" name="duur" value="permanent"><span>Permanent</span></label>
+                        <label class="chip"><input type="radio" name="duur" value="tijdelijk"><span>Tijdelijk</span></label>
+                    </div>
+                </fieldset>
+
+                <fieldset class="stap">
+                    <legend>Waarom is het een barrière?</legend>
+                    <p class="stap-vraag">“Waarom is dit een obstakel voor jou?”</p>
+                    <div class="dicteer-veld">
+                        <textarea name="waarom" rows="3" aria-label="Waarom is het een barrière?"></textarea>
+                        <button type="button" class="mic-knop" data-dicteer="waarom" aria-label="Waarom is het een barrière? inspreken" title="Inspreken"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3" fill="currentColor"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+                    </div>
+                </fieldset>
+
+                <fieldset class="stap">
+                    <legend>Impact</legend>
+                    <p class="stap-vraag">“Hoeveel last heb je hiervan?”</p>
+                    <div id="impact-keuze" class="impact-keuze"></div>
+                    <div class="impact-schaal" aria-hidden="true">
+                        <span>1 = Een beetje lastig</span>
+                        <span>5 = Dit lukt me helemaal niet</span>
+                    </div>
+                </fieldset>
+
+                <fieldset class="stap">
+                    <legend>Mogelijke oplossing</legend>
+                    <p class="stap-vraag">“Wat zou dit voor jou beter maken?”</p>
+                    <div class="dicteer-veld">
+                        <textarea name="oplossing" rows="2" aria-label="Mogelijke oplossing"></textarea>
+                        <button type="button" class="mic-knop" data-dicteer="oplossing" aria-label="Mogelijke oplossing inspreken" title="Inspreken"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3" fill="currentColor"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
                     </div>
                 </fieldset>
 
@@ -205,26 +214,6 @@
                         </div>
                     </div>
                 </fieldset>
-
-                <details id="meer-details" class="meer">
-                    <summary>Meer details <small>straal, omleiding, contact</small></summary>
-                    <div class="meer-inhoud">
-                        <div class="rij">
-                            <label class="mini-label">⭕ Getroffen straal (m)
-                                <input name="straal" type="number" min="0" step="10" placeholder="0 = alleen punt">
-                            </label>
-                            <label class="mini-label">🙋 Gemeld door
-                                <input name="gemeldDoor" placeholder="Naam / organisatie">
-                            </label>
-                        </div>
-                        <label class="mini-label">↪️ Omleiding / advies
-                            <input name="omleiding" placeholder="Bijv. omleiding via Kerkweg">
-                        </label>
-                        <label class="mini-label">📞 Contact ter plaatse
-                            <input name="contact" placeholder="Telefoon of e-mail">
-                        </label>
-                    </div>
-                </details>
             </div>
 
             <div class="dialoog-voet">
@@ -262,6 +251,7 @@
                 <div id="bevestig-icoon" class="bevestig-icoon">🗑️</div>
                 <h2 id="bevestig-titel"></h2>
                 <p id="bevestig-tekst"></p>
+                <input id="bevestig-invoer" class="bevestig-invoer" maxlength="60" hidden>
             </div>
             <div class="bevestig-knoppen">
                 <button class="btn btn-licht" value="annuleer" id="bevestig-annuleer">Annuleren</button>
