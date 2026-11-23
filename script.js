@@ -200,6 +200,256 @@ function formatDatum(iso) {
     return new Date(iso).toLocaleString("nl-NL", { dateStyle: "medium", timeStyle: "short" });
 }
 
+// ---------- Opname: foto (eigen camera) en geluidsopnames per plek ----------
+
+const nieuwId = () => crypto.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+
+/** Haalt de fotovelden uit een formulier (FormData-object). */
+function opnameGegevens(data) {
+    return {
+        fotoGemaakt: !!data.fotoGemaakt,
+        fotoNr: (data.fotoNr || "").trim(),
+    };
+}
+
+/** Korte tekst, bijv. "Foto nr. 12 · 2 geluidsopnames". */
+function opnameTekst(m) {
+    const delen = [];
+    if (m.fotoGemaakt || m.fotoNr) delen.push(m.fotoNr ? `Foto nr. ${m.fotoNr}` : "Foto gemaakt");
+    const n = m.geluiden?.length || 0;
+    if (n) delen.push(`${n} ${n === 1 ? "geluidsopname" : "geluidsopnames"}`);
+    else if (m.geluid || m.geluidTijd) delen.push(m.geluidTijd ? `Geluid om ${m.geluidTijd}` : "Geluid opgenomen"); // oude meldingen
+    return delen.join(" · ");
+}
+
+const formatOpnameDuur = (sec) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+const tijdLabel = (iso) => new Date(iso).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
+
+// Geluid staat in IndexedDB: localStorage is te klein (en kan alleen tekst bewaren).
+// Een melding/opdracht bewaart alleen { id, tijd, duur } per opname.
+let geluidDbBelofte = null;
+function geluidDb() {
+    geluidDbBelofte ??= new Promise((resolve, reject) => {
+        const verzoek = indexedDB.open("nwo-beat-geluid", 1);
+        verzoek.onupgradeneeded = () => verzoek.result.createObjectStore("opnames");
+        verzoek.onsuccess = () => resolve(verzoek.result);
+        verzoek.onerror = () => reject(verzoek.error);
+    });
+    return geluidDbBelofte;
+}
+
+async function geluidActie(modus, actie) {
+    const db = await geluidDb();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction("opnames", modus);
+        const verzoek = actie(tx.objectStore("opnames"));
+        tx.oncomplete = () => resolve(verzoek?.result);
+        tx.onerror = tx.onabort = () => reject(tx.error);
+    });
+}
+
+const bewaarGeluid = (id, blob) => geluidActie("readwrite", (opslag) => opslag.put(blob, id));
+const haalGeluid = (id) => geluidActie("readonly", (opslag) => opslag.get(id));
+function wisGeluiden(ids = []) {
+    if (!ids.length) return Promise.resolve();
+    return geluidActie("readwrite", (opslag) => void ids.forEach((id) => opslag.delete(id))).catch(() => {});
+}
+
+function opnameFout() {
+    if (!window.isSecureContext) {
+        return "Opnemen werkt alleen via een beveiligde verbinding (https of localhost). Via een http://192.168…-adres blokkeert de browser de microfoon.";
+    }
+    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) return "Deze browser kan geen geluid opnemen. Probeer Chrome, Edge of Safari.";
+    return null;
+}
+
+/**
+ * Opnameknop + lijst met opnames in een kaart (obstakel- of opdrachtkaart).
+ * Nieuwe opnames worden pas definitief als de kaart wordt opgeslagen (commit);
+ * sluit je de kaart zonder opslaan, dan worden ze weer verwijderd (afsluiten).
+ */
+function maakOpnameBlok(blok) {
+    const knop = blok.querySelector("[data-opname-knop]");
+    const knopTekst = knop.querySelector(".opname-knop-tekst");
+    const lijst = blok.querySelector(".opname-lijst");
+
+    let opnames = []; // { id, tijd, duur }
+    let nieuw = new Set(); // ids die sinds het openen zijn opgenomen
+    let teWissen = []; // bestaande opnames die bij opslaan weg moeten
+    let recorder = null;
+    let stream = null;
+    let stukjes = [];
+    let begin = 0;
+    let klok = null;
+    let verwerp = false;
+    let naStop = null;
+    let stopBelofte = null;
+    let urls = [];
+
+    const neemtOp = () => recorder?.state === "recording";
+
+    function werkKnopBij() {
+        const bezig = neemtOp();
+        blok.classList.toggle("neemt-op", bezig);
+        knop.setAttribute("aria-pressed", bezig);
+        knop.disabled = !!recorder && !bezig; // even bezig met bewaren
+        knopTekst.textContent = bezig
+            ? `Stop opname · ${formatOpnameDuur(Math.floor((Date.now() - begin) / 1000))}`
+            : opnames.length ? "Nieuwe opname" : "Start opname";
+    }
+
+    function render() {
+        urls.forEach((u) => URL.revokeObjectURL(u));
+        urls = [];
+        lijst.innerHTML = opnames
+            .map(
+                (o, i) => `
+                <li data-id="${o.id}">
+                    <span class="opname-label">🎙️ Opname ${i + 1} <small>${tijdLabel(o.tijd)} · ${formatOpnameDuur(o.duur)}</small></span>
+                    <audio controls preload="metadata"></audio>
+                    <button type="button" class="opname-wis" data-wis="${o.id}" aria-label="Opname ${i + 1} verwijderen" title="Verwijderen">🗑️</button>
+                </li>`
+            )
+            .join("");
+        lijst.querySelectorAll("li").forEach(async (li) => {
+            const blob = await haalGeluid(li.dataset.id).catch(() => null);
+            const audio = li.querySelector("audio");
+            if (!audio.isConnected) return;
+            if (!blob) {
+                audio.outerHTML = '<small class="opname-weg">Niet gevonden in deze browser</small>';
+                return;
+            }
+            const url = URL.createObjectURL(blob);
+            urls.push(url);
+            audio.src = url;
+        });
+        werkKnopBij();
+    }
+
+    async function start() {
+        const fout = opnameFout();
+        if (fout) return toast(fout, "fout", 9000);
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        } catch (err) {
+            toast(
+                err.name === "NotAllowedError"
+                    ? "Geen toegang tot de microfoon. Tik op het slotje in de adresbalk en zet Microfoon op Toestaan."
+                    : "De microfoon kon niet starten. Wordt hij door een andere app gebruikt?",
+                "fout",
+                9000
+            );
+            return;
+        }
+        stukjes = [];
+        verwerp = false;
+        recorder = new MediaRecorder(stream);
+        recorder.ondataavailable = (e) => e.data.size && stukjes.push(e.data);
+        recorder.onstop = naOpname;
+        recorder.start(1000);
+        begin = Date.now();
+        klok = setInterval(werkKnopBij, 500);
+        werkKnopBij();
+    }
+
+    async function naOpname() {
+        clearInterval(klok);
+        stream?.getTracks().forEach((t) => t.stop());
+        stream = null;
+        const blob = new Blob(stukjes, { type: recorder.mimeType || "audio/webm" });
+        const duur = Math.max(1, Math.round((Date.now() - begin) / 1000));
+        const tijd = new Date(begin).toISOString();
+        stukjes = [];
+        if (!verwerp && blob.size) {
+            const id = nieuwId();
+            try {
+                await bewaarGeluid(id, blob);
+                nieuw.add(id);
+                opnames.push({ id, tijd, duur });
+                blok.dispatchEvent(new Event("input", { bubbles: true })); // kaart is gewijzigd
+            } catch (err) {
+                console.warn("Opname bewaren mislukt", err);
+                toast("De opname kon niet bewaard worden: de opslag van deze browser is vol.", "fout", 8000);
+            }
+        }
+        recorder = null;
+        render();
+        naStop?.();
+        naStop = stopBelofte = null;
+    }
+
+    /** Stopt een lopende opname en wacht tot hij bewaard is. */
+    function stop() {
+        if (!recorder) return Promise.resolve();
+        stopBelofte ??= new Promise((resolve) => {
+            naStop = resolve;
+            if (neemtOp()) recorder.stop();
+        });
+        return stopBelofte;
+    }
+
+    knop.addEventListener("click", () => (neemtOp() ? stop() : start()));
+
+    lijst.addEventListener("click", async (e) => {
+        const wis = e.target.closest("[data-wis]");
+        if (!wis) return;
+        const ja = await bevestig({
+            titel: "Opname verwijderen?",
+            tekst: "Deze geluidsopname wordt verwijderd.",
+            okTekst: "Ja, verwijderen",
+            icoon: "🗑️",
+            gevaar: true,
+        });
+        if (!ja) return;
+        const id = wis.dataset.wis;
+        opnames = opnames.filter((o) => o.id !== id);
+        if (nieuw.delete(id)) wisGeluiden([id]);
+        else teWissen.push(id);
+        blok.dispatchEvent(new Event("input", { bubbles: true }));
+        render();
+    });
+
+    return {
+        /** Bij het openen van de kaart: de opnames die er al bij horen. */
+        laad(bestaand = []) {
+            opnames = bestaand.map((o) => ({ ...o }));
+            nieuw = new Set();
+            teWissen = [];
+            render();
+        },
+        stop,
+        lijst: () => opnames.map((o) => ({ ...o })),
+        /** Iets opgenomen of aan het opnemen dat nog niet is opgeslagen? */
+        heeftNieuw: () => !!recorder || nieuw.size > 0,
+        /** Na het opslaan van de kaart: verwijderde opnames echt weggooien. */
+        commit() {
+            wisGeluiden(teWissen);
+            nieuw = new Set();
+            teWissen = [];
+        },
+        /** Kaart gesloten: lopende opname stoppen en niet-opgeslagen opnames weggooien. */
+        afsluiten() {
+            if (recorder) {
+                verwerp = true;
+                stop();
+            }
+            wisGeluiden([...nieuw]);
+            nieuw = new Set();
+            urls.forEach((u) => URL.revokeObjectURL(u));
+            urls = [];
+        },
+    };
+}
+
+/** Geluidsspelers in een kaart-popup; het geluid wordt pas bij openen geladen. */
+function geluidenHtml(m) {
+    if (!m.geluiden?.length) return "";
+    const spelers = m.geluiden
+        .map((g, i) => `<li><span>🎙️ ${i + 1} <small>${tijdLabel(g.tijd)} · ${formatOpnameDuur(g.duur)}</small></span><audio controls preload="none" data-geluid="${g.id}"></audio></li>`)
+        .join("");
+    return `<ol class="popup-geluiden">${spelers}</ol>`;
+}
+
 function maakIcoon(m) {
     const klassen = ["marker", m.duur === "tijdelijk" ? "marker-tijdelijk" : "", m.impact >= 5 ? "marker-puls" : ""];
     return L.divIcon({
@@ -228,10 +478,12 @@ function popupHtml(m) {
                 ${m.duur ? `<span class="badge badge-${m.duur}">${DUUR_LABEL[m.duur]}</span>` : ""}
             </div>
             ${fotosHtml(m)}
+            ${geluidenHtml(m)}
             <dl>
                 ${regel("Locatie", m.locatie || m.adres)}
                 ${regel("Waarom", m.waarom)}
                 ${regel("Oplossing", m.oplossing)}
+                ${regel("Opname", opnameTekst(m))}
                 ${regel("Gemeld", m.aangemaakt ? formatDatum(m.aangemaakt) : "")}
             </dl>
             <div class="popup-knoppen">
@@ -404,6 +656,18 @@ function toonFoto(src) {
 }
 lightbox.addEventListener("click", () => lightbox.close());
 
+// Geluid in een popup pas laden als de popup opengaat (en weer vrijgeven bij sluiten)
+map.on("popupopen", (e) => {
+    e.popup.getElement()?.querySelectorAll("audio[data-geluid]").forEach(async (audio) => {
+        const blob = await haalGeluid(audio.dataset.geluid).catch(() => null);
+        if (blob) audio.src = URL.createObjectURL(blob);
+        else audio.outerHTML = '<small class="opname-weg">Niet gevonden in deze browser</small>';
+    });
+});
+map.on("popupclose", (e) => {
+    e.popup.getElement()?.querySelectorAll("audio[src^='blob:']").forEach((a) => URL.revokeObjectURL(a.src));
+});
+
 // ---------- Filters ----------
 
 // Impact-keuze (1 t/m 5) in het formulier
@@ -451,6 +715,7 @@ function render() {
 const dialoog = document.getElementById("dialoog");
 const form = document.getElementById("melding-form");
 const plaatsHint = document.getElementById("plaats-hint");
+const meldingOpname = maakOpnameBlok(dialoog.querySelector("[data-opname]"));
 
 let bewerkId = null;
 let gekozenLocatie = null;
@@ -497,7 +762,9 @@ function openFormulier(latlng, melding = null) {
     if (melding) {
         for (const [veld, waarde] of Object.entries(melding)) {
             const el = form.elements[veld];
-            if (el && waarde != null) el.value = waarde;
+            if (!el || waarde == null) continue;
+            if (el.type === "checkbox") el.checked = !!waarde;
+            else el.value = waarde;
         }
     } else {
         form.elements.nr.value = volgendNr();
@@ -506,6 +773,7 @@ function openFormulier(latlng, melding = null) {
 
     huidigeFotos = melding?.fotos ? [...melding.fotos] : [];
     renderFotoPreview();
+    meldingOpname.laad(melding?.geluiden || []);
 
     wisFouten();
     formGewijzigd = false;
@@ -566,7 +834,7 @@ form.addEventListener("input", (e) => {
 
 // Sluiten met niet-opgeslagen wijzigingen: eerst vragen
 async function probeerFormulierTeSluiten() {
-    if (formGewijzigd) {
+    if (formGewijzigd || meldingOpname.heeftNieuw()) {
         const weggooien = await bevestig({
             titel: "Wijzigingen weggooien?",
             tekst: "Je hebt dingen ingevuld die nog niet zijn opgeslagen.",
@@ -586,8 +854,9 @@ dialoog.addEventListener("cancel", (e) => {
     probeerFormulierTeSluiten();
 });
 
-form.addEventListener("submit", (e) => {
+form.addEventListener("submit", async (e) => {
     e.preventDefault();
+    await meldingOpname.stop(); // lopende opname eerst afronden
     const data = Object.fromEntries(new FormData(form));
     if (!controleerFormulier(data)) return;
 
@@ -606,6 +875,8 @@ form.addEventListener("submit", (e) => {
         lng: gekozenLocatie.lng,
         adres: gekozenAdres,
         fotos: [...huidigeFotos],
+        geluiden: meldingOpname.lijst(),
+        ...opnameGegevens(data),
         bijgewerkt: nu,
     };
 
@@ -622,6 +893,7 @@ form.addEventListener("submit", (e) => {
         return;
     }
 
+    meldingOpname.commit();
     dialoog.close();
     render();
     markers.get(melding.id)?.openPopup();
@@ -635,8 +907,9 @@ document.getElementById("btn-sluit").addEventListener("click", probeerFormulierT
 // Gebruikt de spraakherkenning van de browser (Chrome, Edge, Safari). Firefox ondersteunt dit niet.
 
 const Spraakherkenning = window.SpeechRecognition || window.webkitSpeechRecognition;
-const dicteerStatus = document.getElementById("dicteer-status");
-const dicteerTekst = document.getElementById("dicteer-tekst");
+// Statusregel van de kaart waarin nu wordt ingesproken (elke kaart heeft er een)
+let dicteerStatus = document.getElementById("dicteer-status");
+let dicteerTekst = document.getElementById("dicteer-tekst");
 let herkenning = null;
 let actieveMicKnop = null;
 
@@ -667,11 +940,16 @@ function dicteerProbleem() {
 function startDicteren(knop) {
     const probleem = dicteerProbleem();
     if (probleem) {
+        dicteerStatus = knop.closest("form").querySelector(".dicteer-status");
+        dicteerTekst = dicteerStatus.querySelector(".dicteer-tekst");
         toonDicteerStatus(probleem, true);
         return;
     }
 
-    const veld = form.elements[knop.dataset.dicteer];
+    const kaartForm = knop.closest("form");
+    dicteerStatus = kaartForm.querySelector(".dicteer-status");
+    dicteerTekst = dicteerStatus.querySelector(".dicteer-tekst");
+    const veld = kaartForm.elements[knop.dataset.dicteer];
     const isTitel = veld.tagName === "INPUT";
     // Bestaande tekst bewaren; ingesproken tekst komt erachter
     const begintekst = veld.value.trim() ? veld.value.trimEnd() + " " : "";
@@ -774,7 +1052,8 @@ document.querySelectorAll(".mic-knop").forEach((knop) => {
 // Microfoon altijd uit als het formulier sluit; oude meldingen weghalen bij openen
 dialoog.addEventListener("close", () => {
     stopDicteren();
-    dicteerStatus.hidden = true;
+    meldingOpname.afsluiten();
+    dialoog.querySelector(".dicteer-status").hidden = true;
 });
 
 // Klik op de kaart: direct melden (plaatsmodus) of eerst een kleine popup tonen
@@ -854,6 +1133,7 @@ document.addEventListener(
                 if (!ja) return;
                 meldingen = meldingen.filter((m) => m.id !== melding.id);
                 bewaarMeldingen();
+                wisGeluiden((melding.geluiden || []).map((g) => g.id));
                 map.closePopup();
                 render();
                 toast("Barrière verwijderd", "succes", 3000);
@@ -1240,7 +1520,7 @@ const NU_DREMPEL = { auto: 80, fiets: 40, lopen: 20 }; // vanaf hoeveel meter "n
 
 const btnRoute = document.getElementById("btn-route");
 const routePaneel = document.getElementById("route-paneel");
-const meldPaneel = document.querySelector(".paneel:not(.route-paneel)");
+const meldPaneel = document.getElementById("hoofd-paneel");
 const routeForm = document.getElementById("route-form");
 const routePlanStatus = routeForm.querySelector(".route-plan-status");
 const routeVanInput = document.getElementById("route-van");
@@ -2033,6 +2313,7 @@ function volgUpdate(nauwkeurigheid = 0) {
         spreek("Je bent op je bestemming.");
         toast("Je bent er! 🏁", "succes");
         stopVolgen({ stil: true });
+        openAfsluitKaart();
         return;
     }
 
@@ -2087,7 +2368,12 @@ function volgUpdate(nauwkeurigheid = 0) {
     }
 }
 
-btnVolgen.addEventListener("click", () => (volgen ? stopVolgen() : startVolgen()));
+// Starten gaat via de introductiekaart; stoppen sluit af met de afsluitende kaart
+btnVolgen.addEventListener("click", () => {
+    if (!volgen) return openIntroKaart();
+    stopVolgen();
+    openAfsluitKaart();
+});
 
 btnGeluid.addEventListener("click", () => {
     geluidAan = !geluidAan;
@@ -2347,6 +2633,481 @@ async function openSnelMelding() {
     }
     openFormulier(hier);
 }
+
+// ---------- Opdrachtkaarten ----------
+// Vooraf: opdracht + locatie. Tijdens de route: lukte het, hoe ging het, obstakel, opname.
+// Bewaard in deze browser, los van de routes, zodat ze een herstart van de pagina overleven.
+
+const OPDRACHTEN_SLEUTEL = "nwo-beat-opdrachten";
+const GELUKT_LABEL = { zelfstandig: "✓ Zelfstandig", "met-hulp": "Met hulp", niet: "Niet gelukt" };
+
+const opdrachtDialoog = document.getElementById("opdracht-dialoog");
+const opdrachtForm = document.getElementById("opdracht-form");
+const opdrachtenLijst = document.getElementById("opdrachten-lijst");
+const opdrachtZin = document.getElementById("opdracht-zin");
+const btnOpdrachtVerwijder = document.getElementById("btn-opdracht-verwijder");
+const opdrachtOpname = maakOpnameBlok(opdrachtDialoog.querySelector("[data-opname]"));
+
+function laadOpdrachten() {
+    try {
+        return JSON.parse(localStorage.getItem(OPDRACHTEN_SLEUTEL)) || [];
+    } catch {
+        return [];
+    }
+}
+
+function bewaarOpdrachten() {
+    try {
+        localStorage.setItem(OPDRACHTEN_SLEUTEL, JSON.stringify(opdrachten));
+        return true;
+    } catch (err) {
+        console.warn("Opslaan mislukt", err);
+        return false;
+    }
+}
+
+let opdrachten = laadOpdrachten();
+let opdrachtBewerkId = null;
+let opdrachtGewijzigd = false;
+
+function renderOpdrachten() {
+    document.getElementById("opdrachten-aantal").textContent = opdrachten.length;
+    document.getElementById("opdrachten-leeg").hidden = opdrachten.length > 0;
+    opdrachtenLijst.innerHTML = opdrachten
+        .map((o, i) => {
+            const tags = [
+                `<span class="tag ${o.gelukt ? `tag-${o.gelukt}` : ""}">${o.gelukt ? GELUKT_LABEL[o.gelukt] : "Nog te doen"}</span>`,
+                o.obstakel ? '<span class="tag tag-obstakel">⚠️ Obstakel</span>' : "",
+                o.geluiden?.length ? `<span class="tag">🎙️ ${o.geluiden.length}</span>` : "",
+            ].join("");
+            return `
+            <li>
+                <button class="opdracht-item" type="button" data-opdracht="${o.id}">
+                    <span class="opdracht-nr">${i + 1}</span>
+                    <span class="lijst-tekst">
+                        <strong>${escapeHtml(o.opdracht)}</strong>
+                        ${o.locatie ? `<small>📍 ${escapeHtml(o.locatie)}</small>` : ""}
+                        <span class="lijst-tags">${tags}</span>
+                    </span>
+                </button>
+            </li>`;
+        })
+        .join("");
+}
+
+/** "Een kaartje kopen" → "een kaartje kopen", voor in de zin die je tegen de expert zegt. */
+function werkOpdrachtZinBij() {
+    const tekst = opdrachtForm.elements.opdracht.value.trim().replace(/[.!]+$/, "");
+    opdrachtZin.textContent = tekst ? tekst.charAt(0).toLowerCase() + tekst.slice(1) : "[opdracht]";
+}
+
+function openOpdracht(opdracht = null) {
+    opdrachtForm.reset();
+    opdrachtBewerkId = opdracht?.id || null;
+    if (opdracht) {
+        for (const [veld, waarde] of Object.entries(opdracht)) {
+            const el = opdrachtForm.elements[veld];
+            if (!el || waarde == null) continue;
+            if (el.type === "checkbox") el.checked = !!waarde;
+            else el.value = waarde;
+        }
+    }
+    const nr = opdracht ? opdrachten.indexOf(opdracht) + 1 : opdrachten.length + 1;
+    document.getElementById("opdracht-titel").textContent = `Opdrachtkaart ${nr}`;
+    btnOpdrachtVerwijder.hidden = !opdracht;
+    opdrachtOpname.laad(opdracht?.geluiden || []);
+    werkOpdrachtZinBij();
+    opdrachtForm.querySelectorAll(".veld-fout").forEach((el) => el.remove());
+    opdrachtForm.querySelectorAll(".ongeldig").forEach((el) => el.classList.remove("ongeldig"));
+    opdrachtGewijzigd = false;
+    opdrachtDialoog.showModal();
+    opdrachtDialoog.querySelector(".dialoog-inhoud").scrollTop = 0;
+    // Nieuwe opdracht: meteen typen. Tijdens de route: deel 1 staat al, dus naar "Tijdens de route".
+    if (!opdracht) opdrachtForm.elements.opdracht.focus();
+    else if (volgen) opdrachtForm.querySelector(".zeg-tegen").scrollIntoView({ block: "start" });
+}
+
+async function probeerOpdrachtTeSluiten() {
+    if (opdrachtGewijzigd || opdrachtOpname.heeftNieuw()) {
+        const weggooien = await bevestig({
+            titel: "Wijzigingen weggooien?",
+            tekst: "Je hebt dingen ingevuld die nog niet zijn opgeslagen.",
+            okTekst: "Weggooien",
+            annuleerTekst: "Verder invullen",
+            icoon: "📝",
+            gevaar: true,
+        });
+        if (!weggooien) return;
+    }
+    opdrachtDialoog.close();
+}
+
+opdrachtForm.addEventListener("input", (e) => {
+    opdrachtGewijzigd = true;
+    if (e.target.name === "opdracht") {
+        werkOpdrachtZinBij();
+        const houder = e.target.closest(".ongeldig");
+        if (houder) {
+            houder.classList.remove("ongeldig");
+            if (houder.nextElementSibling?.classList.contains("veld-fout")) houder.nextElementSibling.remove();
+        }
+    }
+});
+
+opdrachtForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    await opdrachtOpname.stop(); // lopende opname eerst afronden
+    const data = Object.fromEntries(new FormData(opdrachtForm));
+    if (!data.opdracht.trim()) {
+        const veld = opdrachtForm.elements.opdracht;
+        if (!veld.closest(".ongeldig")) toonVeldFout(veld, "Beschrijf kort wat de expert moet doen.");
+        veld.scrollIntoView({ behavior: "smooth", block: "center" });
+        veld.focus({ preventScroll: true });
+        return;
+    }
+
+    const opdracht = {
+        id: opdrachtBewerkId || crypto.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
+        opdracht: data.opdracht.trim(),
+        locatie: data.locatie.trim(),
+        gelukt: data.gelukt || null,
+        hoe: data.hoe.trim(),
+        obstakel: data.obstakel.trim(),
+        duur: data.duur || null,
+        geluiden: opdrachtOpname.lijst(),
+        ...opnameGegevens(data),
+        bijgewerkt: new Date().toISOString(),
+    };
+
+    const vorige = opdrachten;
+    opdrachten = opdrachtBewerkId
+        ? opdrachten.map((o) => (o.id === opdrachtBewerkId ? opdracht : o))
+        : [...opdrachten, opdracht];
+    if (!bewaarOpdrachten()) {
+        opdrachten = vorige;
+        toast("Opslaan mislukt: de opslag in deze browser is vol.", "fout", 8000);
+        return;
+    }
+    opdrachtOpname.commit();
+    opdrachtDialoog.close();
+    renderOpdrachten();
+    toast(opdrachtBewerkId ? "Opdracht bijgewerkt" : "Opdracht toegevoegd", "succes", 3000);
+});
+
+btnOpdrachtVerwijder.addEventListener("click", async () => {
+    const o = opdrachten.find((x) => x.id === opdrachtBewerkId);
+    if (!o) return;
+    const ja = await bevestig({
+        titel: "Opdracht verwijderen?",
+        tekst: `"${o.opdracht}" en alles wat je erbij hebt ingevuld wordt verwijderd.`,
+        okTekst: "Ja, verwijderen",
+        icoon: "🗑️",
+        gevaar: true,
+    });
+    if (!ja) return;
+    opdrachten = opdrachten.filter((x) => x.id !== o.id);
+    bewaarOpdrachten();
+    wisGeluiden((o.geluiden || []).map((g) => g.id));
+    opdrachtDialoog.close();
+    renderOpdrachten();
+    toast("Opdracht verwijderd", "succes", 3000);
+});
+
+opdrachtDialoog.querySelectorAll("[data-opdracht-sluit]").forEach((k) => k.addEventListener("click", probeerOpdrachtTeSluiten));
+opdrachtDialoog.addEventListener("cancel", (e) => {
+    e.preventDefault();
+    probeerOpdrachtTeSluiten();
+});
+opdrachtDialoog.addEventListener("close", () => {
+    stopDicteren();
+    opdrachtOpname.afsluiten();
+    opdrachtDialoog.querySelector(".dicteer-status").hidden = true;
+});
+
+document.getElementById("btn-opdracht-nieuw").addEventListener("click", () => openOpdracht());
+opdrachtenLijst.addEventListener("click", (e) => {
+    const knop = e.target.closest("[data-opdracht]");
+    const o = knop && opdrachten.find((x) => x.id === knop.dataset.opdracht);
+    if (o) openOpdracht(o);
+});
+
+renderOpdrachten();
+
+// ---------- Introductiekaart en afsluitende kaart ----------
+// "Route volgen" opent eerst de introductiekaart; aankomen of stoppen opent de afsluitende kaart.
+
+const introDialoog = document.getElementById("intro-dialoog");
+const afsluitDialoog = document.getElementById("afsluit-dialoog");
+let wandelingStart = null;
+
+function openIntroKaart() {
+    if (!actieveRoute) return;
+    introDialoog.querySelector("form").reset();
+    introDialoog.returnValue = "";
+    const tip = document.getElementById("intro-opdrachten");
+    tip.hidden = opdrachten.length === 0;
+    tip.textContent = `📋 Op deze route ${opdrachten.length === 1 ? "staat 1 opdracht" : `staan ${opdrachten.length} opdrachten`}: ${opdrachten.map((o) => o.opdracht).join("; ")}.`;
+    introDialoog.showModal();
+    introDialoog.querySelector(".dialoog-inhoud").scrollTop = 0;
+}
+
+introDialoog.addEventListener("close", () => {
+    if (introDialoog.returnValue !== "start") return;
+    wandelingStart = new Date().toISOString();
+    startVolgen();
+});
+
+function openAfsluitKaart() {
+    afsluitDialoog.querySelector("form").reset();
+    afsluitDialoog.returnValue = "";
+    const nieuw = wandelingStart ? meldingen.filter((m) => (m.aangemaakt || "") >= wandelingStart).length : 0;
+    const klaar = opdrachten.filter((o) => o.gelukt).length;
+    const delen = [`${nieuw} ${nieuw === 1 ? "obstakel" : "obstakels"} vastgelegd`];
+    if (opdrachten.length) delen.push(`${klaar} van ${opdrachten.length} opdrachten ingevuld`);
+    const opnames = wandelingStart
+        ? [...meldingen, ...opdrachten].flatMap((x) => x.geluiden || []).filter((g) => g.tijd >= wandelingStart).length
+        : 0;
+    delen.push(`${opnames} ${opnames === 1 ? "geluidsopname" : "geluidsopnames"}`);
+    document.getElementById("afsluit-samenvatting").textContent = `Onderweg: ${delen.join(" · ")}.`;
+    afsluitDialoog.showModal();
+    afsluitDialoog.querySelector(".dialoog-inhoud").scrollTop = 0;
+}
+
+// ---------- Nagesprekken ----------
+// Menu in de zijkolom met alle nagesprekken; de nagesprekkaart om er een te houden of in te plannen.
+
+const NAGESPREKKEN_SLEUTEL = "nwo-beat-nagesprekken";
+
+const nagesprekPaneel = document.getElementById("nagesprek-paneel");
+const nagesprekLijst = document.getElementById("nagesprek-lijst");
+const nagesprekDialoog = document.getElementById("nagesprek-dialoog");
+const nagesprekForm = document.getElementById("nagesprek-form");
+const btnNagesprekVerwijder = document.getElementById("btn-nagesprek-verwijder");
+const nagesprekOpname = maakOpnameBlok(nagesprekDialoog.querySelector("[data-opname]"));
+
+function laadNagesprekken() {
+    try {
+        return JSON.parse(localStorage.getItem(NAGESPREKKEN_SLEUTEL)) || [];
+    } catch {
+        return [];
+    }
+}
+
+function bewaarNagesprekken() {
+    try {
+        localStorage.setItem(NAGESPREKKEN_SLEUTEL, JSON.stringify(nagesprekken));
+        return true;
+    } catch (err) {
+        console.warn("Opslaan mislukt", err);
+        return false;
+    }
+}
+
+let nagesprekken = laadNagesprekken();
+let nagesprekBewerkId = null;
+let nagesprekGewijzigd = false;
+
+/** "di 25 nov., 14:00" — of null als er geen datum is. */
+function afspraakTekst(n) {
+    if (!n.datum) return null;
+    const datum = new Date(`${n.datum}T${n.tijd || "12:00"}`);
+    const dag = datum.toLocaleDateString("nl-NL", { weekday: "short", day: "numeric", month: "short" });
+    return n.tijd ? `${dag}, ${n.tijd}` : dag;
+}
+
+/** Ingeplande gesprekken eerst (vroegste bovenaan), daarna gehouden gesprekken (nieuwste bovenaan). */
+function gesorteerdeNagesprekken() {
+    const sleutel = (n) => `${n.datum || "9999"}T${n.tijd || "99"}`;
+    const open = nagesprekken.filter((n) => !n.gehouden).sort((a, b) => sleutel(a).localeCompare(sleutel(b)));
+    const klaar = nagesprekken.filter((n) => n.gehouden).sort((a, b) => (b.aangemaakt || "").localeCompare(a.aangemaakt || ""));
+    return [...open, ...klaar];
+}
+
+function renderNagesprekken() {
+    document.getElementById("nagesprekken-aantal").textContent = nagesprekken.length;
+    document.getElementById("nagesprek-leeg").hidden = nagesprekken.length > 0;
+    nagesprekLijst.innerHTML = gesorteerdeNagesprekken()
+        .map((n) => {
+            const wanneer =
+                n.moment === "later"
+                    ? [afspraakTekst(n) || "Nog geen datum", n.plek].filter(Boolean).join(" · ")
+                    : `Direct na de route · ${formatDatum(n.aangemaakt)}`;
+            const tags = [
+                n.gehouden ? '<span class="tag tag-actief">✓ Gehouden</span>' : '<span class="tag tag-gepland">📅 Gepland</span>',
+                n.geluiden?.length ? `<span class="tag">🎙️ ${n.geluiden.length}</span>` : "",
+            ].join("");
+            return `
+            <li>
+                <button class="lijst-item" type="button" data-nagesprek="${n.id}" style="--kleur:${n.gehouden ? "var(--actief)" : "var(--ink-blauw)"}">
+                    <span class="lijst-icoon">${n.gehouden ? "💬" : "📅"}</span>
+                    <span class="lijst-tekst">
+                        <strong>${escapeHtml(n.wandeling || "Nagesprek")}</strong>
+                        <small>${escapeHtml(wanneer)}</small>
+                        <span class="lijst-tags">${tags}</span>
+                    </span>
+                </button>
+            </li>`;
+        })
+        .join("");
+}
+
+function werkAfspraakVeldenBij() {
+    const later = nagesprekForm.elements.moment.value === "later";
+    nagesprekForm.querySelector("[data-alleen-later]").hidden = !later;
+}
+
+/** Opent de nagesprekkaart: een bestaand gesprek, of een nieuw met een paar velden alvast ingevuld. */
+function openNagesprek(nagesprek = null, voorinvullen = {}) {
+    nagesprekForm.reset();
+    nagesprekBewerkId = nagesprek?.id || null;
+    const waarden = nagesprek || { gehouden: voorinvullen.moment === "direct", ...voorinvullen };
+    for (const [veld, waarde] of Object.entries(waarden)) {
+        const el = nagesprekForm.elements[veld];
+        if (!el || waarde == null) continue;
+        if (el.type === "checkbox") el.checked = !!waarde;
+        else el.value = waarde;
+    }
+    werkAfspraakVeldenBij();
+    btnNagesprekVerwijder.hidden = !nagesprek;
+    nagesprekOpname.laad(nagesprek?.geluiden || []);
+    nagesprekGewijzigd = false;
+    nagesprekDialoog.showModal();
+    nagesprekDialoog.querySelector(".dialoog-inhoud").scrollTop = 0;
+}
+
+async function probeerNagesprekTeSluiten() {
+    if (nagesprekGewijzigd || nagesprekOpname.heeftNieuw()) {
+        const weggooien = await bevestig({
+            titel: "Wijzigingen weggooien?",
+            tekst: "Je hebt dingen ingevuld die nog niet zijn opgeslagen.",
+            okTekst: "Weggooien",
+            annuleerTekst: "Verder invullen",
+            icoon: "📝",
+            gevaar: true,
+        });
+        if (!weggooien) return;
+    }
+    nagesprekDialoog.close();
+}
+
+nagesprekForm.addEventListener("input", () => (nagesprekGewijzigd = true));
+nagesprekForm.addEventListener("change", (e) => {
+    if (e.target.name === "moment") werkAfspraakVeldenBij();
+});
+
+nagesprekForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    await nagesprekOpname.stop(); // lopende opname eerst afronden
+    const data = Object.fromEntries(new FormData(nagesprekForm));
+    const later = data.moment === "later";
+    const vorig = nagesprekken.find((n) => n.id === nagesprekBewerkId);
+    const nu = new Date().toISOString();
+    const nagesprek = {
+        id: nagesprekBewerkId || nieuwId(),
+        wandeling: data.wandeling.trim(),
+        moment: data.moment || "direct",
+        datum: later ? data.datum : "",
+        tijd: later ? data.tijd : "",
+        plek: later ? data.plek.trim() : "",
+        gehouden: !!data.gehouden,
+        ervaring: data.ervaring.trim(),
+        aanvulling: data.aanvulling.trim(),
+        notities: data.notities.trim(),
+        opnameGestopt: !!data.opnameGestopt,
+        bedankt: !!data.bedankt,
+        vervolgUitgelegd: !!data.vervolgUitgelegd,
+        geluiden: nagesprekOpname.lijst(),
+        aangemaakt: vorig?.aangemaakt || nu,
+        bijgewerkt: nu,
+    };
+
+    const vorige = nagesprekken;
+    nagesprekken = vorig ? nagesprekken.map((n) => (n.id === vorig.id ? nagesprek : n)) : [...nagesprekken, nagesprek];
+    if (!bewaarNagesprekken()) {
+        nagesprekken = vorige;
+        toast("Opslaan mislukt: de opslag in deze browser is vol.", "fout", 8000);
+        return;
+    }
+    nagesprekOpname.commit();
+    nagesprekDialoog.close();
+    renderNagesprekken();
+    toast(nagesprek.gehouden ? "Nagesprek opgeslagen" : "Nagesprek ingepland 📅", "succes", 3000);
+});
+
+btnNagesprekVerwijder.addEventListener("click", async () => {
+    const n = nagesprekken.find((x) => x.id === nagesprekBewerkId);
+    if (!n) return;
+    const ja = await bevestig({
+        titel: "Nagesprek verwijderen?",
+        tekst: "Het nagesprek, je aantekeningen en de opnames worden verwijderd.",
+        okTekst: "Ja, verwijderen",
+        icoon: "🗑️",
+        gevaar: true,
+    });
+    if (!ja) return;
+    nagesprekken = nagesprekken.filter((x) => x.id !== n.id);
+    bewaarNagesprekken();
+    wisGeluiden((n.geluiden || []).map((g) => g.id));
+    nagesprekDialoog.close();
+    renderNagesprekken();
+    toast("Nagesprek verwijderd", "succes", 3000);
+});
+
+nagesprekDialoog.querySelectorAll("[data-nagesprek-sluit]").forEach((k) => k.addEventListener("click", probeerNagesprekTeSluiten));
+nagesprekDialoog.addEventListener("cancel", (e) => {
+    e.preventDefault();
+    probeerNagesprekTeSluiten();
+});
+nagesprekDialoog.addEventListener("close", () => {
+    stopDicteren();
+    nagesprekOpname.afsluiten();
+    nagesprekDialoog.querySelector(".dicteer-status").hidden = true;
+});
+
+// --- Het menu (paneel in de zijkolom) ---
+
+function openNagesprekPaneel() {
+    zetPlaatsModus(false);
+    renderNagesprekken();
+    nagesprekPaneel.hidden = false;
+    meldPaneel.hidden = true;
+}
+
+function sluitNagesprekPaneel() {
+    nagesprekPaneel.hidden = true;
+    meldPaneel.hidden = false;
+}
+
+document.getElementById("btn-nagesprekken").addEventListener("click", openNagesprekPaneel);
+document.getElementById("btn-nagesprek-paneel-sluit").addEventListener("click", sluitNagesprekPaneel);
+nagesprekPaneel.querySelectorAll("[data-nieuw-nagesprek]").forEach((knop) =>
+    knop.addEventListener("click", () => openNagesprek(null, { moment: knop.dataset.nieuwNagesprek }))
+);
+nagesprekLijst.addEventListener("click", (e) => {
+    const knop = e.target.closest("[data-nagesprek]");
+    const n = knop && nagesprekken.find((x) => x.id === knop.dataset.nagesprek);
+    if (n) openNagesprek(n);
+});
+
+// --- Vanuit de afsluitende kaart door naar het nagesprek ---
+
+const btnAfsluitOk = document.getElementById("btn-afsluit-ok");
+afsluitDialoog.addEventListener("change", (e) => {
+    if (e.target.name !== "nagesprek") return;
+    btnAfsluitOk.textContent = e.target.value === "direct" ? "▶ Start nagesprek" : "📅 Nagesprek inplannen";
+});
+afsluitDialoog.addEventListener("close", () => {
+    const keuze = afsluitDialoog.querySelector('input[name="nagesprek"]:checked')?.value;
+    const naar = routeNaarInput.value.trim();
+    btnAfsluitOk.textContent = "Afronden ✓";
+    if (afsluitDialoog.returnValue !== "klaar" || !keuze) return;
+    openNagesprek(null, {
+        moment: keuze,
+        wandeling: `${new Date().toLocaleDateString("nl-NL", { day: "numeric", month: "short" })}${naar ? ` – naar ${naar}` : ""}`,
+    });
+});
+
+renderNagesprekken();
 
 // ---------- Start ----------
 
