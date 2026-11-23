@@ -1242,7 +1242,7 @@ const btnRoute = document.getElementById("btn-route");
 const routePaneel = document.getElementById("route-paneel");
 const meldPaneel = document.querySelector(".paneel:not(.route-paneel)");
 const routeForm = document.getElementById("route-form");
-const routePlanKnop = routeForm.querySelector(".route-plan-knop");
+const routePlanStatus = routeForm.querySelector(".route-plan-status");
 const routeVanInput = document.getElementById("route-van");
 const routeNaarInput = document.getElementById("route-naar");
 const routeResultaat = document.getElementById("route-resultaat");
@@ -1603,8 +1603,8 @@ async function planRoute({ vanaf = null, stil = false } = {}) {
         return;
     }
     routeBezig = true;
-    routePlanKnop.disabled = true;
-    const status = (tekst) => (routePlanKnop.textContent = tekst);
+    routePlanStatus.hidden = false;
+    const status = (tekst) => (routePlanStatus.textContent = tekst);
     status("Adressen zoeken…");
 
     try {
@@ -1656,8 +1656,8 @@ async function planRoute({ vanaf = null, stil = false } = {}) {
         }
     } finally {
         routeBezig = false;
-        routePlanKnop.disabled = false;
-        routePlanKnop.textContent = "Route zoeken";
+        routePlanStatus.hidden = true;
+        routePlanStatus.textContent = "";
         if (routeWachtrij) {
             const volgende = routeWachtrij;
             routeWachtrij = null;
