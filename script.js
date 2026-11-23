@@ -1701,7 +1701,7 @@ function tekenRoutes() {
     const punten = r.punten || [{ latlng: L.latLng(r.coords[0]) }, { latlng: L.latLng(r.coords.at(-1)) }];
 
     // Vertrek: bolletje met het gekozen vervoer. Tijdens het volgen is dat je eigen locatie: niet versleepbaar.
-    const startHtml = `<div class="route-doel route-start">${(VERVOER[gekozenVervoer()] || VERVOER.auto).icoon}</div>`;
+    const startHtml = `<div class="route-doel route-start">${(VERVOER[gekozenVervoer()] || VERVOER.lopen).icoon}</div>`;
     if (volgen) {
         L.marker(r.coords[0], {
             icon: L.divIcon({ className: "", html: startHtml, iconSize: [36, 36], iconAnchor: [18, 18] }),
@@ -2082,9 +2082,8 @@ map.on("dragstart", () => {
 // We bewaren alleen de punten en het vervoer, zodat bij openen de route (en blokkades) opnieuw berekend worden.
 // Een opgeslagen route ziet er zo uit: { id, van: { lat, lng, label } | null (= mijn locatie), stops: [{ lat, lng, label }], naar: { lat, lng, label }, vervoer, opgeslagen }
 
+// Alleen lopen staat aan; oude opgeslagen routes met auto/fiets vallen terug op lopen.
 const VERVOER = {
-    auto: { label: "Auto", icoon: "🚗" },
-    fiets: { label: "Fiets", icoon: "🚲" },
     lopen: { label: "Lopen", icoon: "🚶" },
 };
 const btnRouteOpslaan = document.getElementById("btn-route-opslaan");
@@ -2161,7 +2160,7 @@ function renderOpgeslagen() {
     opgeslagenLijst.innerHTML = [...opgeslagenRoutes]
         .sort((a, b) => b.opgeslagen - a.opgeslagen)
         .map((r) => {
-            const v = VERVOER[r.vervoer] || VERVOER.auto;
+            const v = VERVOER[r.vervoer] || VERVOER.lopen;
             return `
             <li class="route-item">
                 <button class="lijst-item" type="button" data-route="${r.id}" style="--kleur:#0342df">
