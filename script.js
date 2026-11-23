@@ -1526,8 +1526,9 @@ function renderStops() {
     btnStopToevoegen.hidden = routeStops.length >= MAX_STOPS;
 }
 
-function voegStopToe(punt = null, { focus = true } = {}) {
-    if (routeStops.length >= MAX_STOPS) {
+function voegStopToe(punt = null, { focus = true, vooraan = false } = {}) {
+    // Vooraan = het startpunt dat bij "Route volgen" een tussenstop wordt; dat mag altijd.
+    if (!vooraan && routeStops.length >= MAX_STOPS) {
         toast(`Je kunt maximaal ${MAX_STOPS} tussenstops toevoegen.`, "info");
         return null;
     }
@@ -1544,7 +1545,8 @@ function voegStopToe(punt = null, { focus = true } = {}) {
         stop.punt = { latlng: r.latlng, label: r.titel };
         naAdresGekozen();
     });
-    routeStops.push(stop);
+    if (vooraan) routeStops.unshift(stop);
+    else routeStops.push(stop);
     renderStops();
     if (focus) stop.input.focus();
     return stop;
@@ -1935,6 +1937,8 @@ document.addEventListener("visibilitychange", () => {
     if (volgen && document.visibilityState === "visible") houdSchermAan();
 });
 
+const START_MARGE = 50; // meter: verder van het vertrekpunt dan dit = startpunt wordt een tussenstop
+
 async function startVolgen() {
     if (!actieveRoute) return;
     btnVolgen.disabled = true;
@@ -1944,6 +1948,26 @@ async function startVolgen() {
         return; // melding over de locatie is al getoond
     } finally {
         btnVolgen.disabled = false;
+    }
+
+    // Sta je niet bij het gekozen vertrekpunt? Dan wordt dat vertrekpunt de eerste tussenstop
+    // en loopt de route vanaf je huidige locatie, zodat je eerst naar het startpunt geleid wordt.
+    const vanTekst = routeVanInput.value.trim();
+    const startPunt = actieveRoute.punten?.[0]?.latlng || L.latLng(actieveRoute.coords[0]);
+    if (vanTekst && mijnLocatie.distanceTo(startPunt) > START_MARGE) {
+        routeStops.forEach((s) => (s.bezocht = false));
+        voegStopToe({ latlng: L.latLng(startPunt), label: vanTekst }, { focus: false, vooraan: true });
+        routeVanInput.value = ""; // leeg vertrekpunt = mijn locatie
+        routePunten.van = null;
+        werkOpslaanKnopBij();
+        toast("Je staat nog niet bij het startpunt. We leiden je er eerst naartoe.", "info", 4000);
+        btnVolgen.disabled = true;
+        try {
+            await planRoute({ vanaf: mijnLocatie, stil: true });
+        } finally {
+            btnVolgen.disabled = false;
+        }
+        if (!actieveRoute) return;
     }
 
     volgen = true;
