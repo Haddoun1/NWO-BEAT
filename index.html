@@ -27,7 +27,7 @@
             </div>
         </header>
 
-        <aside class="kaart-blok paneel">
+        <aside id="hoofd-paneel" class="kaart-blok paneel">
             <form id="zoek-form" class="zoek" role="search">
                 <span class="zoek-icoon" aria-hidden="true">🔍</span>
                 <input id="zoek-input" type="search" placeholder="Zoek een adres of plaats…" aria-label="Zoek adres of plaats">
@@ -54,6 +54,10 @@
                 <div class="leeg-icoon">🧭</div>
                 <p><strong>Nog geen routes opgeslagen</strong><br>Plan een route en tik op ☆ Opslaan om hem hier terug te vinden.</p>
             </div>
+
+            <button id="btn-nagesprekken" class="btn btn-licht route-menu-knop" type="button">
+                💬 Nagesprekken <span id="nagesprekken-aantal" class="aantal">0</span>
+            </button>
         </aside>
 
         <!-- Route plannen en volgen -->
@@ -105,7 +109,34 @@
                     <button id="btn-geluid" class="btn btn-licht" type="button" aria-pressed="true" title="Gesproken aanwijzingen">🔊</button>
                 </div>
 
+                <!-- Opdrachtkaarten: vooraf aanmaken, tijdens de route invullen -->
+                <section class="opdrachten" aria-label="Opdrachten">
+                    <div class="opdrachten-kop">
+                        <h3>📋 Opdrachten <span id="opdrachten-aantal" class="aantal">0</span></h3>
+                        <button id="btn-opdracht-nieuw" class="btn btn-klein btn-licht" type="button">＋ Opdracht</button>
+                    </div>
+                    <p id="opdrachten-leeg" class="opdrachten-leeg">Leg vooraf vast welke handelingen de expert op of rond de route doet.</p>
+                    <ol id="opdrachten-lijst" class="opdrachten-lijst"></ol>
+                </section>
+
                 <ol id="route-stappen" class="route-stappen"></ol>
+            </div>
+        </section>
+
+        <!-- Nagesprekken: plannen, houden en terugkijken -->
+        <section id="nagesprek-paneel" class="kaart-blok paneel nagesprek-paneel" aria-label="Nagesprekken" hidden>
+            <div class="route-kop">
+                <h2>💬 Nagesprekken</h2>
+                <button class="sluit-knop" type="button" id="btn-nagesprek-paneel-sluit" aria-label="Nagesprekken sluiten">✕</button>
+            </div>
+            <div class="nagesprek-knoppen">
+                <button class="btn btn-primary" type="button" data-nieuw-nagesprek="direct">▶ Nu houden</button>
+                <button class="btn btn-licht" type="button" data-nieuw-nagesprek="later">📅 Inplannen</button>
+            </div>
+            <ul id="nagesprek-lijst" class="lijst"></ul>
+            <div id="nagesprek-leeg" class="leeg">
+                <div class="leeg-icoon">💬</div>
+                <p><strong>Nog geen nagesprekken</strong><br>Houd een nagesprek direct na de route, of plan er een in voor later.</p>
             </div>
         </section>
     </div>
@@ -133,13 +164,21 @@
             <div class="dialoog-kop">
                 <div>
                     <h2 id="dialoog-titel">Barrièrekaart</h2>
-                    <p class="dialoog-subkop">Gebruik deze kaart als de expert onderweg een barrière ervaart. Je kunt de antwoorden hier opschrijven en tegelijkertijd opnemen met je telefoon.</p>
+                    <p class="dialoog-subkop">Gebruik deze kaart als de expert onderweg een barrière ervaart. Je kunt de antwoorden hier opschrijven en tegelijkertijd opnemen met de opnameknop.</p>
                 </div>
                 <button class="sluit-knop" type="button" id="btn-sluit" aria-label="Sluiten">✕</button>
             </div>
 
             <div class="dialoog-inhoud">
-                <p id="dicteer-status" class="dicteer-status" hidden role="status"><span class="opname-stip"></span> <span id="dicteer-tekst"></span></p>
+                <p id="dicteer-status" class="dicteer-status" hidden role="status"><span class="opname-stip"></span> <span id="dicteer-tekst" class="dicteer-tekst"></span></p>
+
+                <section class="opname-blok" data-opname aria-label="Geluidsopname">
+                    <div class="opname-bediening">
+                        <button type="button" class="opname-knop" data-opname-knop><span class="opname-knop-icoon" aria-hidden="true"></span><span class="opname-knop-tekst">Start opname</span></button>
+                        <span class="opname-hint">Neem hier op wat de expert over deze plek vertelt.</span>
+                    </div>
+                    <ol class="opname-lijst"></ol>
+                </section>
 
                 <label class="nr-veld">Barrière nr.
                     <input name="nr" type="number" min="1" step="1" inputmode="numeric">
@@ -212,10 +251,282 @@
                         </div>
                     </div>
                 </fieldset>
+
+                <fieldset class="stap">
+                    <legend>Foto <small>met eigen camera</small></legend>
+                    <div class="opname-rij">
+                        <label class="vink"><input type="checkbox" name="fotoGemaakt"> Foto gemaakt</label>
+                        <label class="opname-detail">Fotonr. <input name="fotoNr" maxlength="20" placeholder="bijv. 12"></label>
+                    </div>
+                </fieldset>
             </div>
 
             <div class="dialoog-voet">
                 <button class="btn btn-licht" type="button" id="btn-annuleer">Annuleren</button>
+                <button class="btn btn-primary" type="submit">Opslaan ✓</button>
+            </div>
+        </form>
+    </dialog>
+
+    <!-- Introductiekaart: voor de start van de wandeling -->
+    <dialog id="intro-dialoog" class="dialoog">
+        <form method="dialog">
+            <div class="dialoog-kop">
+                <div>
+                    <h2>Introductie wandeling</h2>
+                    <p class="dialoog-subkop">Gebruik deze kaart voor de start om uit te leggen hoe de wandeling verloopt.</p>
+                </div>
+                <button class="sluit-knop" type="submit" value="annuleer" aria-label="Sluiten">✕</button>
+            </div>
+
+            <div class="dialoog-inhoud">
+                <section class="zeg-tegen">
+                    <h3>Zeg tegen de expert</h3>
+                    <p>“Vandaag leggen we de route af die we hebben besproken. Jij gaat voorop en gaat van het startpunt naar het eindpunt zoals je dat normaal ook doet. Ik heb de route bij me, dus ik vertel je welke kant we op gaan.</p>
+                    <p>Er zijn geen goede of foute antwoorden. Als iets lastig, onduidelijk of ongemakkelijk is, zeg je dat. Je mag ook gewoon hardop denken terwijl we onderweg zijn.</p>
+                    <p>We kunnen altijd even pauzeren of stoppen. Laat het me gewoon weten.”</p>
+                </section>
+
+                <fieldset class="stap">
+                    <legend>Voor je begint</legend>
+                    <ul class="vink-lijst">
+                        <li><label class="vink"><input type="checkbox"> Laat de obstakelkaarten zien en leg ze uit. Vertel dat jij ze invult.</label></li>
+                        <li><label class="vink"><input type="checkbox"> <span>Leg de opdrachtkaarten uit en welke opdrachten er op deze route zijn <small>(optioneel)</small>.</span></label></li>
+                        <li><label class="vink"><input type="checkbox"> Vraag nog een keer toestemming voor de geluidsopnames. Je neemt alleen op bij obstakels en opdrachten.</label></li>
+                        <li><label class="vink"><input type="checkbox"> Beantwoord eventuele vragen en begin dan met de wandeling.</label></li>
+                    </ul>
+                    <p id="intro-opdrachten" class="kaart-tip" hidden></p>
+                </fieldset>
+            </div>
+
+            <div class="dialoog-voet">
+                <button class="btn btn-licht" value="annuleer">Annuleren</button>
+                <button class="btn btn-primary" value="start">▶ Start de wandeling</button>
+            </div>
+        </form>
+    </dialog>
+
+    <!-- Opdrachtkaart: vooraf invullen + tijdens de route -->
+    <dialog id="opdracht-dialoog" class="dialoog">
+        <form id="opdracht-form" novalidate>
+            <div class="dialoog-kop">
+                <div>
+                    <h2 id="opdracht-titel">Opdrachtkaart</h2>
+                    <p class="dialoog-subkop">Gebruik deze kaart voor een specifieke handeling op of rond de route. Vul het eerste deel vooraf in en de rest tijdens de route.</p>
+                </div>
+                <button class="sluit-knop" type="button" data-opdracht-sluit aria-label="Sluiten">✕</button>
+            </div>
+
+            <div class="dialoog-inhoud">
+                <p class="dicteer-status" hidden role="status"><span class="opname-stip"></span> <span class="dicteer-tekst"></span></p>
+
+                <h3 class="kaart-deel">Vooraf invullen</h3>
+
+                <fieldset class="stap">
+                    <legend>Opdracht</legend>
+                    <p class="stap-vraag stap-hint">Wat moet de expert doen?</p>
+                    <div class="dicteer-veld">
+                        <textarea name="opdracht" rows="2" aria-label="Opdracht" maxlength="300" placeholder="Bijv. een kaartje kopen bij de automaat"></textarea>
+                        <button type="button" class="mic-knop" data-dicteer="opdracht" aria-label="Opdracht inspreken" title="Inspreken"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3" fill="currentColor"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+                    </div>
+                </fieldset>
+
+                <fieldset class="stap">
+                    <legend>Locatie opdracht</legend>
+                    <div class="dicteer-veld">
+                        <input name="locatie" aria-label="Locatie opdracht" maxlength="200" placeholder="Bijv. hoofdingang Centraal Station">
+                        <button type="button" class="mic-knop" data-dicteer="locatie" aria-label="Locatie opdracht inspreken" title="Inspreken"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3" fill="currentColor"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+                    </div>
+                </fieldset>
+
+                <h3 class="kaart-deel">Tijdens de route</h3>
+
+                <section class="opname-blok" data-opname aria-label="Geluidsopname">
+                    <div class="opname-bediening">
+                        <button type="button" class="opname-knop" data-opname-knop><span class="opname-knop-icoon" aria-hidden="true"></span><span class="opname-knop-tekst">Start opname</span></button>
+                        <span class="opname-hint">Start de opname voordat je de opdracht geeft.</span>
+                    </div>
+                    <ol class="opname-lijst"></ol>
+                </section>
+
+                <section class="zeg-tegen">
+                    <h3>Zeg tegen de expert</h3>
+                    <p>“Hier wil ik je vragen om <strong id="opdracht-zin">[opdracht]</strong>. Doe het zoals je het normaal ook zou doen en vertel hardop wat je doet.”</p>
+                </section>
+
+                <fieldset class="stap">
+                    <legend>Lukte het?</legend>
+                    <div class="chips gelukt-keuze" role="radiogroup" aria-label="Lukte het?">
+                        <label class="chip"><input type="radio" name="gelukt" value="zelfstandig"><span>Zelfstandig</span></label>
+                        <label class="chip"><input type="radio" name="gelukt" value="met-hulp"><span>Met hulp</span></label>
+                        <label class="chip"><input type="radio" name="gelukt" value="niet"><span>Niet gelukt</span></label>
+                    </div>
+                </fieldset>
+
+                <fieldset class="stap">
+                    <legend>Hoe ging het?</legend>
+                    <div class="dicteer-veld">
+                        <textarea name="hoe" rows="2" aria-label="Hoe ging het?"></textarea>
+                        <button type="button" class="mic-knop" data-dicteer="hoe" aria-label="Hoe ging het? inspreken" title="Inspreken"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3" fill="currentColor"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+                    </div>
+                </fieldset>
+
+                <fieldset class="stap">
+                    <legend>Obstakel tijdens deze opdracht</legend>
+                    <p class="stap-vraag">“Wat werkt hier niet voor jou?”</p>
+                    <div class="dicteer-veld">
+                        <textarea name="obstakel" rows="2" aria-label="Obstakel tijdens deze opdracht"></textarea>
+                        <button type="button" class="mic-knop" data-dicteer="obstakel" aria-label="Obstakel inspreken" title="Inspreken"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3" fill="currentColor"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+                    </div>
+                    <div class="chips" role="radiogroup" aria-label="Permanent of tijdelijk">
+                        <label class="chip"><input type="radio" name="duur" value="permanent"><span>Permanent</span></label>
+                        <label class="chip"><input type="radio" name="duur" value="tijdelijk"><span>Tijdelijk</span></label>
+                    </div>
+                </fieldset>
+
+                <fieldset class="stap">
+                    <legend>Foto <small>met eigen camera</small></legend>
+                    <div class="opname-rij">
+                        <label class="vink"><input type="checkbox" name="fotoGemaakt"> Foto gemaakt</label>
+                        <label class="opname-detail">Fotonr. <input name="fotoNr" maxlength="20" placeholder="bijv. 12"></label>
+                    </div>
+                </fieldset>
+            </div>
+
+            <div class="dialoog-voet">
+                <button class="btn btn-gevaar voet-links" type="button" id="btn-opdracht-verwijder" hidden>🗑️ Verwijderen</button>
+                <button class="btn btn-licht" type="button" data-opdracht-sluit>Annuleren</button>
+                <button class="btn btn-primary" type="submit">Opslaan ✓</button>
+            </div>
+        </form>
+    </dialog>
+
+    <!-- Afsluitende kaart: einde van de route -->
+    <dialog id="afsluit-dialoog" class="dialoog">
+        <form method="dialog">
+            <div class="dialoog-kop">
+                <div>
+                    <h2>Einde van de route</h2>
+                    <p class="dialoog-subkop">Gebruik deze kaart als jullie de route hebben afgelegd.</p>
+                </div>
+                <button class="sluit-knop" type="submit" aria-label="Sluiten">✕</button>
+            </div>
+
+            <div class="dialoog-inhoud">
+                <p id="afsluit-samenvatting" class="kaart-samenvatting"></p>
+
+                <section class="zeg-tegen">
+                    <h3>Vraag aan de expert</h3>
+                    <ul>
+                        <li>“Hoe heb je de route ervaren?”</li>
+                        <li>“Zijn er nog dingen die we onderweg niet hebben besproken?”</li>
+                    </ul>
+                </section>
+
+                <fieldset class="stap">
+                    <legend>Nagesprek</legend>
+                    <div class="keuze-kaarten">
+                        <label class="keuze-kaart"><input type="radio" name="nagesprek" value="direct"><span><strong>Direct na de route</strong>Ga samen naar een geschikte plek voor het nagesprek.</span></label>
+                        <label class="keuze-kaart"><input type="radio" name="nagesprek" value="later"><span><strong>Op een later moment</strong>Spreek af wanneer het nagesprek is.</span></label>
+                    </div>
+                </fieldset>
+
+                <fieldset class="stap">
+                    <legend>Rond af</legend>
+                    <ul class="vink-lijst">
+                        <li><label class="vink"><input type="checkbox"> Bedank de expert voor de tijd en inzet.</label></li>
+                    </ul>
+                </fieldset>
+            </div>
+
+            <div class="dialoog-voet">
+                <button class="btn btn-primary" id="btn-afsluit-ok" value="klaar">Afronden ✓</button>
+            </div>
+        </form>
+    </dialog>
+
+    <!-- Nagesprekkaart -->
+    <dialog id="nagesprek-dialoog" class="dialoog">
+        <form id="nagesprek-form" novalidate>
+            <div class="dialoog-kop">
+                <div>
+                    <h2>Nagesprek</h2>
+                    <p class="dialoog-subkop">Praat samen na over hoe de route voor de expert was. Direct na de route, of later op een manier die de expert fijn vindt.</p>
+                </div>
+                <button class="sluit-knop" type="button" data-nagesprek-sluit aria-label="Sluiten">✕</button>
+            </div>
+
+            <div class="dialoog-inhoud">
+                <p class="dicteer-status" hidden role="status"><span class="opname-stip"></span> <span class="dicteer-tekst"></span></p>
+
+                <fieldset class="stap">
+                    <legend>Wandeling</legend>
+                    <input name="wandeling" aria-label="Wandeling" maxlength="120" placeholder="Bijv. Route Centraal – Dam, expert 3">
+                </fieldset>
+
+                <fieldset class="stap">
+                    <legend>Wanneer?</legend>
+                    <div class="keuze-kaarten">
+                        <label class="keuze-kaart"><input type="radio" name="moment" value="direct"><span><strong>Direct na de route</strong>Ga samen naar een geschikte plek.</span></label>
+                        <label class="keuze-kaart"><input type="radio" name="moment" value="later"><span><strong>Op een later moment</strong>Spreek af wanneer en hoe.</span></label>
+                    </div>
+                    <div class="nagesprek-afspraak" data-alleen-later hidden>
+                        <label>Datum <input name="datum" type="date"></label>
+                        <label>Tijd <input name="tijd" type="time"></label>
+                        <label class="breed">Plek of manier <input name="plek" maxlength="120" placeholder="Bijv. bellen, videobellen, café op de hoek"></label>
+                    </div>
+                    <label class="vink"><input type="checkbox" name="gehouden"> Het nagesprek is gehouden</label>
+                </fieldset>
+
+                <h3 class="kaart-deel">Het gesprek</h3>
+
+                <section class="opname-blok" data-opname aria-label="Geluidsopname">
+                    <div class="opname-bediening">
+                        <button type="button" class="opname-knop" data-opname-knop><span class="opname-knop-icoon" aria-hidden="true"></span><span class="opname-knop-tekst">Start opname</span></button>
+                        <span class="opname-hint">Neem het nagesprek op (als jullie dat hebben afgesproken).</span>
+                    </div>
+                    <ol class="opname-lijst"></ol>
+                </section>
+
+                <fieldset class="stap">
+                    <legend>Hoe was de route?</legend>
+                    <p class="stap-vraag">“Hoe heb je de route ervaren?”</p>
+                    <div class="dicteer-veld">
+                        <textarea name="ervaring" rows="3" aria-label="Hoe heb je de route ervaren?"></textarea>
+                        <button type="button" class="mic-knop" data-dicteer="ervaring" aria-label="Ervaring inspreken" title="Inspreken"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3" fill="currentColor"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+                    </div>
+                </fieldset>
+
+                <fieldset class="stap">
+                    <legend>Nog iets vergeten?</legend>
+                    <p class="stap-vraag">“Zijn er nog dingen die we onderweg niet hebben besproken?”</p>
+                    <div class="dicteer-veld">
+                        <textarea name="aanvulling" rows="3" aria-label="Nog niet besproken"></textarea>
+                        <button type="button" class="mic-knop" data-dicteer="aanvulling" aria-label="Aanvulling inspreken" title="Inspreken"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3" fill="currentColor"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+                    </div>
+                </fieldset>
+
+                <fieldset class="stap">
+                    <legend>Eigen aantekeningen</legend>
+                    <div class="dicteer-veld">
+                        <textarea name="notities" rows="2" aria-label="Eigen aantekeningen"></textarea>
+                        <button type="button" class="mic-knop" data-dicteer="notities" aria-label="Aantekeningen inspreken" title="Inspreken"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3" fill="currentColor"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+                    </div>
+                </fieldset>
+
+                <fieldset class="stap">
+                    <legend>Rond af</legend>
+                    <ul class="vink-lijst">
+                        <li><label class="vink"><input type="checkbox" name="opnameGestopt"> Stop de geluidsopname.</label></li>
+                        <li><label class="vink"><input type="checkbox" name="bedankt"> Bedank de expert voor de tijd en inzet.</label></li>
+                        <li><label class="vink"><input type="checkbox" name="vervolgUitgelegd"> Vertel wat er met de resultaten gebeurt.</label></li>
+                    </ul>
+                </fieldset>
+            </div>
+
+            <div class="dialoog-voet">
+                <button class="btn btn-gevaar voet-links" type="button" id="btn-nagesprek-verwijder" hidden>🗑️ Verwijderen</button>
+                <button class="btn btn-licht" type="button" data-nagesprek-sluit>Annuleren</button>
                 <button class="btn btn-primary" type="submit">Opslaan ✓</button>
             </div>
         </form>

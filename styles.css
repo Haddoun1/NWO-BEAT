@@ -2157,3 +2157,482 @@ textarea.ongeldig,
 .route-start {
     border-color: var(--midnight);
 }
+
+/* ---------- Gesprekskaarten (introductie, opdracht, afsluiting) ---------- */
+
+/* Tekst die je hardop tegen de expert zegt */
+.zeg-tegen {
+    padding: 14px 16px;
+    border-radius: 16px;
+    background: var(--lavendel);
+    box-shadow: inset 4px 0 0 var(--ink-blauw);
+}
+
+.zeg-tegen h3 {
+    margin: 0 0 6px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--paars-donker);
+}
+
+.zeg-tegen p,
+.zeg-tegen ul {
+    margin: 0 0 8px;
+    line-height: 1.5;
+}
+
+.zeg-tegen p:last-child,
+.zeg-tegen ul:last-child {
+    margin-bottom: 0;
+}
+
+.zeg-tegen ul {
+    padding-left: 20px;
+}
+
+/* Kopje "Vooraf invullen" / "Tijdens de route" */
+.kaart-deel {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 4px 0 -6px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--grijs);
+}
+
+.kaart-deel::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--rand);
+}
+
+.kaart-tip {
+    display: flex;
+    gap: 8px;
+    margin: 0;
+    padding: 10px 12px;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    background: var(--licht-blauw);
+}
+
+.kaart-samenvatting {
+    margin: 0;
+    font-weight: 700;
+}
+
+/* Afvinklijstjes */
+.vink-lijst {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.vink {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    line-height: 1.4;
+    cursor: pointer;
+}
+
+.vink input {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    margin: 1px 0 0;
+    padding: 0;
+    accent-color: var(--ink-blauw);
+    cursor: pointer;
+}
+
+.vink-lijst .vink {
+    padding: 8px 10px;
+    border-radius: 12px;
+    background: var(--veld);
+    transition: background 0.2s;
+}
+
+.vink-lijst .vink:has(input:checked) {
+    background: color-mix(in srgb, var(--actief) 12%, white);
+    color: var(--grijs);
+}
+
+.vink small {
+    color: var(--grijs);
+}
+
+/* Foto gemaakt + fotonr, geluid opgenomen + tijd */
+.opname-rij {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+}
+
+.opname-rij .vink {
+    min-width: 170px;
+    align-items: center;
+}
+
+.opname-detail {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.88rem;
+    color: var(--grijs);
+}
+
+.opname-detail input {
+    width: 110px;
+    padding: 8px 12px;
+}
+
+/* Nagesprek: keuze met uitleg */
+.keuze-kaarten {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 8px;
+}
+
+.keuze-kaart {
+    position: relative;
+    cursor: pointer;
+}
+
+.keuze-kaart input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.keuze-kaart > span {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    height: 100%;
+    padding: 12px 14px;
+    border-radius: 14px;
+    border: 2px solid transparent;
+    background: var(--veld);
+    font-size: 0.85rem;
+    line-height: 1.4;
+    color: var(--grijs);
+    transition: all 0.2s;
+}
+
+.keuze-kaart strong {
+    font-size: 0.95rem;
+    color: var(--tekst);
+}
+
+.keuze-kaart input:checked + span {
+    border-color: var(--ink-blauw);
+    background: #fff;
+}
+
+.keuze-kaart input:focus-visible + span {
+    box-shadow: 0 0 0 4px rgba(3, 66, 223, 0.15);
+}
+
+.voet-links {
+    margin-right: auto;
+}
+
+/* Opdrachten in het routepaneel */
+.opdrachten {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    border-radius: 16px;
+    background: var(--zacht);
+}
+
+.opdrachten-kop {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.opdrachten-kop h3 {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 1rem;
+}
+
+.opdrachten-leeg {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--grijs);
+}
+
+.opdrachten-lijst {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.opdracht-item {
+    width: 100%;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    text-align: left;
+    font: inherit;
+    color: var(--tekst);
+    border: 2px solid transparent;
+    border-radius: 14px;
+    background: #fff;
+    cursor: pointer;
+    transition: border-color 0.2s;
+}
+
+.opdracht-item:hover,
+.opdracht-item:focus-visible {
+    outline: none;
+    border-color: var(--lavendel);
+}
+
+.opdracht-nr {
+    width: 26px;
+    height: 26px;
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #fff;
+    background: var(--verloop);
+}
+
+.tag-zelfstandig { background: color-mix(in srgb, var(--actief) 16%, white); color: #16784f; }
+.tag-met-hulp { background: #fff4d6; color: #8a5a00; }
+.tag-niet,
+.tag-obstakel { background: color-mix(in srgb, var(--gevaar) 12%, white); color: #b01d39; }
+
+/* ---------- Geluidsopname per plek ---------- */
+
+.opname-blok {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    border-radius: 16px;
+    background: var(--zacht);
+    border: 2px solid var(--rand);
+    transition: border-color 0.2s, background 0.2s;
+}
+
+.opname-blok.neemt-op {
+    border-color: var(--gevaar);
+    background: color-mix(in srgb, var(--gevaar) 6%, white);
+}
+
+.opname-bediening {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+}
+
+.opname-knop {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px 10px 12px;
+    border: none;
+    border-radius: 999px;
+    font: inherit;
+    font-weight: 700;
+    color: #fff;
+    background: var(--gevaar);
+    cursor: pointer;
+    font-variant-numeric: tabular-nums;
+    transition: transform 0.2s var(--veer), opacity 0.2s;
+}
+
+.opname-knop:hover {
+    transform: scale(1.03);
+}
+
+.opname-knop:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+.opname-knop:focus-visible {
+    outline: 3px solid var(--paars);
+    outline-offset: 2px;
+}
+
+/* Rondje = opnemen, vierkantje = stoppen */
+.opname-knop-icoon {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #fff;
+}
+
+.neemt-op .opname-knop {
+    animation: mic-puls 1.4s ease-out infinite;
+}
+
+.neemt-op .opname-knop-icoon {
+    border-radius: 3px;
+}
+
+.opname-hint {
+    font-size: 0.85rem;
+    color: var(--grijs);
+}
+
+.neemt-op .opname-hint {
+    display: none;
+}
+
+.opname-lijst {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.opname-lijst:empty {
+    display: none;
+}
+
+.opname-lijst li {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    padding: 8px 10px;
+    border-radius: 12px;
+    background: #fff;
+}
+
+.opname-label {
+    flex: 1 1 100%;
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+.opname-label small,
+.popup-geluiden small {
+    font-weight: 500;
+    color: var(--grijs);
+}
+
+.opname-lijst audio {
+    flex: 1;
+    min-width: 0;
+    height: 36px;
+}
+
+.opname-wis {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    border: none;
+    border-radius: 12px;
+    background: transparent;
+    cursor: pointer;
+    opacity: 0.6;
+}
+
+.opname-wis:hover,
+.opname-wis:focus-visible {
+    opacity: 1;
+    background: var(--veld);
+}
+
+.opname-weg {
+    color: var(--grijs);
+}
+
+.popup-geluiden {
+    list-style: none;
+    margin: 8px 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.popup-geluiden li {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 0.8rem;
+}
+
+.popup-geluiden audio {
+    width: 100%;
+    height: 32px;
+}
+
+/* ---------- Nagesprekken ---------- */
+
+#btn-nagesprekken .aantal {
+    margin-left: 2px;
+}
+
+.nagesprek-knoppen {
+    display: flex;
+    gap: 8px;
+}
+
+.nagesprek-knoppen .btn {
+    flex: 1;
+    padding: 12px;
+}
+
+.nagesprek-afspraak {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.nagesprek-afspraak[hidden] {
+    display: none;
+}
+
+.nagesprek-afspraak label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--grijs);
+}
+
+.nagesprek-afspraak .breed {
+    grid-column: 1 / -1;
+}
+
+@media (max-width: 760px) {
+    .nagesprek-paneel {
+        max-height: 52vh;
+    }
+}
