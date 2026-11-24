@@ -1904,9 +1904,10 @@ textarea.ongeldig,
         height: 46px;
     }
 
+    /* Even groot als het hoofdpaneel, zodat de kaart zichtbaar blijft */
     .route-paneel {
-        max-height: 52vh;
-        max-height: 52dvh;
+        max-height: 42vh;
+        max-height: 42dvh;
     }
 
     /* Tijdens het volgen op mobiel: lijst met stappen inklappen, zodat de kaart groot blijft */
