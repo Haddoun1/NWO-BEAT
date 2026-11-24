@@ -34,7 +34,7 @@
             </form>
 
             <section class="filters" aria-label="Filters">
-                <div class="chips" role="group" aria-label="Soort barrière">
+                <div class="chips" role="group" aria-label="Soort obstakel">
                     <label class="chip chip-permanent"><input type="checkbox" name="duur" value="permanent" checked><span><i class="stip"></i>Permanent</span></label>
                     <label class="chip chip-tijdelijk"><input type="checkbox" name="duur" value="tijdelijk" checked><span><i class="stip"></i>Tijdelijk</span></label>
                 </div>
@@ -148,22 +148,22 @@
         </svg>
     </button>
 
-    <button id="btn-nieuw" class="fab" type="button" aria-label="Barrière melden">
+    <button id="btn-nieuw" class="fab" type="button" aria-label="Obstakel melden">
         <span class="fab-plus">+</span><span class="fab-tekst">Melden</span>
     </button>
 
     <div id="plaats-hint" class="plaats-hint" hidden>
-        <span class="hint-pin">📍</span> Tik op de kaart waar de barrière is
+        <span class="hint-pin">📍</span> Tik op de kaart waar het obstakel is
         <button id="btn-annuleer-plaats" class="btn btn-klein btn-licht" type="button">Annuleer</button>
     </div>
 
-    <!-- Barrièrekaart: barrière melden / bewerken -->
+    <!-- Obstakelkaart: obstakel melden / bewerken -->
     <dialog id="dialoog" class="dialoog">
         <form id="melding-form" novalidate>
             <div class="dialoog-kop">
                 <div>
-                    <h2 id="dialoog-titel">Barrièrekaart</h2>
-                    <p class="dialoog-subkop">Gebruik deze kaart als de expert onderweg een barrière ervaart. Je kunt de antwoorden hier opschrijven en tegelijkertijd opnemen met de opnameknop.</p>
+                    <h2 id="dialoog-titel">Obstakelkaart</h2>
+                    <p class="dialoog-subkop">Gebruik deze kaart als de expert onderweg een obstakel ervaart. Je kunt de antwoorden hier opschrijven en tegelijkertijd opnemen met de opnameknop.</p>
                 </div>
                 <button class="sluit-knop" type="button" id="btn-sluit" aria-label="Sluiten">✕</button>
             </div>
@@ -179,16 +179,16 @@
                     <ol class="opname-lijst"></ol>
                 </section>
 
-                <label class="nr-veld">Barrière nr.
+                <label class="nr-veld">Obstakel nr.
                     <input name="nr" type="number" min="1" step="1" inputmode="numeric">
                 </label>
 
                 <fieldset class="stap">
-                    <legend>Wat is de barrière?</legend>
+                    <legend>Wat is het obstakel?</legend>
                     <p class="stap-vraag">“Wat werkt hier niet voor jou?”</p>
                     <div class="dicteer-veld">
-                        <textarea name="wat" rows="2" aria-label="Wat is de barrière?" required maxlength="300"></textarea>
-                        <button type="button" class="mic-knop" data-dicteer="wat" aria-label="Wat is de barrière? inspreken" title="Inspreken"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3" fill="currentColor"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+                        <textarea name="wat" rows="2" aria-label="Wat is het obstakel?" required maxlength="300"></textarea>
+                        <button type="button" class="mic-knop" data-dicteer="wat" aria-label="Wat is het obstakel? inspreken" title="Inspreken"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3" fill="currentColor"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
                     </div>
                 </fieldset>
 
@@ -206,11 +206,11 @@
                 </fieldset>
 
                 <fieldset class="stap">
-                    <legend>Waarom is het een barrière?</legend>
+                    <legend>Waarom is het een obstakel?</legend>
                     <p class="stap-vraag">“Waarom is dit een obstakel voor jou?”</p>
                     <div class="dicteer-veld">
-                        <textarea name="waarom" rows="3" aria-label="Waarom is het een barrière?"></textarea>
-                        <button type="button" class="mic-knop" data-dicteer="waarom" aria-label="Waarom is het een barrière? inspreken" title="Inspreken"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3" fill="currentColor"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+                        <textarea name="waarom" rows="3" aria-label="Waarom is het een obstakel?"></textarea>
+                        <button type="button" class="mic-knop" data-dicteer="waarom" aria-label="Waarom is het een obstakel? inspreken" title="Inspreken"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3" fill="currentColor"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
                     </div>
                 </fieldset>
 
