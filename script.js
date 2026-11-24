@@ -1,4 +1,4 @@
-// NWO BEAT – barrières op de kaart (Leaflet + OpenStreetMap)
+// NWO BEAT – obstakels op de kaart (Leaflet + OpenStreetMap)
 
 // ---------- Instellingen ----------
 
@@ -8,7 +8,7 @@ const AMSTERDAM_GRENZEN = [[52.27, 4.72], [52.44, 5.09]];
 const OPSLAG_SLEUTEL = "nwo-beat-meldingen";
 const ROUTES_SLEUTEL = "nwo-beat-routes";
 
-// Impact van een barrière: 1 = een beetje lastig … 5 = dit lukt me helemaal niet
+// Impact van een obstakel: 1 = een beetje lastig … 5 = dit lukt me helemaal niet
 const IMPACT = {
     1: { emoji: "🙂", kleur: "#f5b400" },
     2: { emoji: "😐", kleur: "#f59400" },
@@ -138,7 +138,7 @@ function laadMeldingen() {
     } catch {
         return [];
     }
-    // Meldingen van vóór de barrièrekaart omzetten (titel/ernst/datums → barrièrevelden)
+    // Meldingen van vóór de obstakelkaart omzetten (titel/ernst/datums → obstakelvelden)
     let volgende = Math.max(0, ...lijst.map((m) => Number(m.nr) || 0)) + 1;
     return lijst.map((m) => {
         if (m.wat !== undefined) return m;
@@ -469,7 +469,7 @@ function popupHtml(m) {
             <div class="popup-kop" style="--kleur:${impact.kleur}">
                 <span class="popup-icoon">${impact.emoji}</span>
                 <div>
-                    <p class="popup-type">Barrière nr. ${escapeHtml(m.nr ?? "?")}</p>
+                    <p class="popup-type">Obstakel nr. ${escapeHtml(m.nr ?? "?")}</p>
                     <h3>${escapeHtml(m.wat)}</h3>
                 </div>
             </div>
@@ -701,7 +701,7 @@ function render() {
         .sort((a, b) => (Number(a.nr) || 0) - (Number(b.nr) || 0));
 
     for (const m of zichtbaar) {
-        const marker = L.marker([m.lat, m.lng], { icon: maakIcoon(m), title: `Barrière ${m.nr}: ${m.wat}` })
+        const marker = L.marker([m.lat, m.lng], { icon: maakIcoon(m), title: `Obstakel ${m.nr}: ${m.wat}` })
             .bindPopup(popupHtml(m), { maxWidth: 300 })
             .addTo(meldingLaag);
         markers.set(m.id, marker);
@@ -710,7 +710,7 @@ function render() {
     routeBlokkadesBijwerken();
 }
 
-// ---------- Barrière melden / bewerken (de barrièrekaart) ----------
+// ---------- Obstakel melden / bewerken (de obstakelkaart) ----------
 
 const dialoog = document.getElementById("dialoog");
 const form = document.getElementById("melding-form");
@@ -749,7 +749,7 @@ async function vulLocatieAdres(latlng, bekendAdres = null) {
     if (adres && !veld.value.trim()) veld.value = adres;
 }
 
-/** Eerstvolgende vrije barrièrenummer. */
+/** Eerstvolgende vrije obstakelnummer. */
 const volgendNr = () => Math.max(0, ...meldingen.map((m) => Number(m.nr) || 0)) + 1;
 
 let plaatsModus = false;
@@ -806,7 +806,7 @@ function toonVeldFout(veld, tekst) {
 function controleerFormulier(data) {
     wisFouten();
     const fouten = [];
-    if (!data.wat?.trim()) fouten.push([form.elements.wat, "Beschrijf kort wat de barrière is."]);
+    if (!data.wat?.trim()) fouten.push([form.elements.wat, "Beschrijf kort wat het obstakel is."]);
     if (!data.impact) fouten.push([form.querySelector('input[name="impact"]'), "Kies hoeveel last je ervan hebt."]);
 
     fouten.forEach(([veld, tekst]) => toonVeldFout(veld, tekst));
@@ -889,7 +889,7 @@ form.addEventListener("submit", async (e) => {
 
     if (!bewaarMeldingen()) {
         meldingen = vorige;
-        toast("Opslaan mislukt: de opslag in deze browser is vol. Verwijder een paar foto's of oude barrières en probeer het opnieuw.", "fout", 8000);
+        toast("Opslaan mislukt: de opslag in deze browser is vol. Verwijder een paar foto's of oude obstakels en probeer het opnieuw.", "fout", 8000);
         return;
     }
 
@@ -897,7 +897,7 @@ form.addEventListener("submit", async (e) => {
     dialoog.close();
     render();
     markers.get(melding.id)?.openPopup();
-    toast(bewerkId ? "Barrière bijgewerkt" : "Barrière opgeslagen — bedankt!", "succes", 3000);
+    toast(bewerkId ? "Obstakel bijgewerkt" : "Obstakel opgeslagen — bedankt!", "succes", 3000);
 });
 
 document.getElementById("btn-annuleer").addEventListener("click", probeerFormulierTeSluiten);
@@ -1066,7 +1066,7 @@ map.on("click", (e) => {
     const inhoud = document.createElement("div");
     inhoud.className = "popup-knoppen-stapel";
     inhoud.innerHTML = `
-        <button class="btn btn-primary btn-klein" type="button" data-kies="melden">📍 Barrière hier melden</button>
+        <button class="btn btn-primary btn-klein" type="button" data-kies="melden">📍 Obstakel hier melden</button>
         <button class="btn btn-licht btn-klein" type="button" data-kies="route">🧭 Route hierheen</button>
         ${actieveRoute ? '<button class="btn btn-licht btn-klein" type="button" data-kies="stop">➕ Als tussenstop</button>' : ""}`;
     inhoud.querySelector('[data-kies="stop"]')?.addEventListener("click", () => {
@@ -1094,7 +1094,7 @@ btnNieuw.addEventListener("click", () => (volgen ? openSnelMelding() : zetPlaats
 
 function zetMeldKnop(hier) {
     btnNieuw.querySelector(".fab-tekst").textContent = hier ? "Hier melden" : "Melden";
-    btnNieuw.setAttribute("aria-label", hier ? "Barrière melden op je huidige locatie" : "Barrière melden");
+    btnNieuw.setAttribute("aria-label", hier ? "Obstakel melden op je huidige locatie" : "Obstakel melden");
 }
 document.getElementById("btn-annuleer-plaats").addEventListener("click", () => zetPlaatsModus(false));
 document.addEventListener("keydown", (e) => {
@@ -1119,13 +1119,13 @@ document.addEventListener(
 
         if (knop.dataset.actie === "route") {
             map.closePopup();
-            routeNaar(L.latLng(melding.lat, melding.lng), `Barrière ${melding.nr}`);
+            routeNaar(L.latLng(melding.lat, melding.lng), `Obstakel ${melding.nr}`);
         } else if (knop.dataset.actie === "bewerk") {
             openFormulier(L.latLng(melding.lat, melding.lng), melding);
         } else if (knop.dataset.actie === "verwijder") {
             bevestig({
-                titel: "Barrière verwijderen?",
-                tekst: `Barrière ${melding.nr} ("${melding.wat}") wordt definitief verwijderd. Dit kun je niet ongedaan maken.`,
+                titel: "Obstakel verwijderen?",
+                tekst: `Obstakel ${melding.nr} ("${melding.wat}") wordt definitief verwijderd. Dit kun je niet ongedaan maken.`,
                 okTekst: "Ja, verwijderen",
                 icoon: "🗑️",
                 gevaar: true,
@@ -1136,7 +1136,7 @@ document.addEventListener(
                 wisGeluiden((melding.geluiden || []).map((g) => g.id));
                 map.closePopup();
                 render();
-                toast("Barrière verwijderd", "succes", 3000);
+                toast("Obstakel verwijderd", "succes", 3000);
             });
         }
     },
@@ -1158,7 +1158,7 @@ function locatiePopup() {
     inhoud.innerHTML = `
         <p class="popup-type">Jouw locatie</p>
         <p class="locatie-nauwkeurig"></p>
-        <button class="btn btn-primary btn-klein" type="button">📍 Barrière hier melden</button>`;
+        <button class="btn btn-primary btn-klein" type="button">📍 Obstakel hier melden</button>`;
     inhoud.querySelector("button").addEventListener("click", () => openFormulier(mijnLocatie));
     return inhoud;
 }
@@ -1718,7 +1718,7 @@ function puntOpRoute(p, route) {
     return beste;
 }
 
-/** Barrières die op of vlak naast de route liggen (alleen ter waarschuwing; de route wordt niet aangepast). */
+/** Obstakels die op of vlak naast de route liggen (alleen ter waarschuwing; de route wordt niet aangepast). */
 function blokkadesOpRoute(route) {
     // Tijdens het volgen: wat achter je ligt (of precies waar je staat) is niet meer relevant
     const vanaf = volgen && mijnLocatie ? puntOpRoute(mijnLocatie, route).positie + 30 : -Infinity;
@@ -2074,17 +2074,17 @@ function toonRouteWaarschuwing() {
                 const m = b.melding;
                 return `<li><button type="button" data-blokkade="${m.id}">
                     <span>${impactVan(m).emoji}</span>
-                    <span><b>${escapeHtml(m.wat)}</b><small>Barrière ${escapeHtml(m.nr ?? "?")} · impact ${m.impact}/5</small></span>
+                    <span><b>${escapeHtml(m.wat)}</b><small>Obstakel ${escapeHtml(m.nr ?? "?")} · impact ${m.impact}/5</small></span>
                 </button></li>`;
             })
             .join("");
         html += `
             <div class="route-melding route-melding-letop">
-                <strong>⚠️ ${n} ${n === 1 ? "barrière" : "barrières"} op je route</strong>
+                <strong>⚠️ ${n} ${n === 1 ? "obstakel" : "obstakels"} op je route</strong>
                 <ul>${items}</ul>
             </div>`;
     } else {
-        html += `<div class="route-melding route-melding-ok"><strong>✅ Geen barrières op je route</strong></div>`;
+        html += `<div class="route-melding route-melding-ok"><strong>✅ Geen obstakels op je route</strong></div>`;
     }
 
     if (routeOpties.length > 1 && !volgen) {
@@ -2093,7 +2093,7 @@ function toonRouteWaarschuwing() {
     routeWaarschuwing.innerHTML = html;
 }
 
-// Barrières veranderd: opnieuw bepalen welke op de route liggen
+// Obstakels veranderd: opnieuw bepalen welke op de route liggen
 function routeBlokkadesBijwerken() {
     if (!actieveRoute) return;
     routeOpties.forEach((r) => (r.blokkades = blokkadesOpRoute(r)));
@@ -2356,14 +2356,14 @@ function volgUpdate(nauwkeurigheid = 0) {
         spreek(`${stap.tekst}.`);
     }
 
-    // Waarschuwen voor barrières die eraan komen
+    // Waarschuwen voor obstakels die eraan komen
     for (const b of r.blokkades) {
         const vooruit = b.positie - plek.positie;
         if (vooruit > -20 && vooruit < 600 && !gewaarschuwd.has(b.melding.id)) {
             gewaarschuwd.add(b.melding.id);
             const waar = vooruit < 50 ? "Hier" : `Over ${formatAfstand(vooruit)}`;
-            toast(`${waar}: barrière ${b.melding.nr} – ${b.melding.wat} (impact ${b.melding.impact}/5)`, "fout", 8000);
-            spreek(`Let op! ${vooruit < 50 ? "Hier" : `Over ${spreekAfstand(vooruit)}`} is een barrière: ${b.melding.wat}.`);
+            toast(`${waar}: obstakel ${b.melding.nr} – ${b.melding.wat} (impact ${b.melding.impact}/5)`, "fout", 8000);
+            spreek(`Let op! ${vooruit < 50 ? "Hier" : `Over ${spreekAfstand(vooruit)}`} is een obstakel: ${b.melding.wat}.`);
         }
     }
 }

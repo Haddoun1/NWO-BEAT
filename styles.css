@@ -1060,7 +1060,7 @@ textarea {
     50% { opacity: 0.25; }
 }
 
-/* Barrièrekaart: vraag onder de kop, nummer, impact, permanent/tijdelijk */
+/* Obstakelkaart: vraag onder de kop, nummer, impact, permanent/tijdelijk */
 .stap-vraag {
     margin: -6px 0 0;
     font-size: 0.88rem;
