@@ -2942,6 +2942,7 @@ function renderNagesprekken() {
                     <span class="lijst-icoon">${n.gehouden ? "💬" : "📅"}</span>
                     <span class="lijst-tekst">
                         <strong>${escapeHtml(n.wandeling || "Nagesprek")}</strong>
+                        ${n.metWie ? `<small>👤 Met ${escapeHtml(n.metWie)}</small>` : ""}
                         <small>${escapeHtml(wanneer)}</small>
                         <span class="lijst-tags">${tags}</span>
                     </span>
@@ -2956,9 +2957,40 @@ function werkAfspraakVeldenBij() {
     nagesprekForm.querySelector("[data-alleen-later]").hidden = !later;
 }
 
+const nagesprekRouteKeuze = document.getElementById("nagesprek-route");
+const ZELF_TYPEN = "__zelf";
+
+/** Vult de keuzelijst met de opgeslagen routes (nieuwste eerst) en de optie "Zelf typen". */
+function vulNagesprekRoutes() {
+    const routes = [...opgeslagenRoutes].sort((a, b) => b.opgeslagen - a.opgeslagen);
+    nagesprekRouteKeuze.innerHTML =
+        `<option value="">— Kies een opgeslagen route —</option>` +
+        routes.map((r) => `<option value="${r.id}">${escapeHtml(routeNaam(r))}</option>`).join("") +
+        `<option value="${ZELF_TYPEN}">✏️ Zelf typen</option>`;
+}
+
+/** Het tekstvak voor de naam van de wandeling is alleen zichtbaar bij "Zelf typen". */
+function werkWandelingVeldBij() {
+    nagesprekForm.elements.wandeling.hidden = nagesprekRouteKeuze.value !== ZELF_TYPEN;
+}
+
+nagesprekRouteKeuze.addEventListener("change", () => {
+    const veld = nagesprekForm.elements.wandeling;
+    const r = opgeslagenRoutes.find((x) => x.id === nagesprekRouteKeuze.value);
+    if (r) veld.value = routeNaam(r);
+    else if (nagesprekRouteKeuze.value === ZELF_TYPEN) {
+        veld.value = "";
+        werkWandelingVeldBij();
+        veld.focus();
+        return;
+    } else veld.value = "";
+    werkWandelingVeldBij();
+});
+
 /** Opent de nagesprekkaart: een bestaand gesprek, of een nieuw met een paar velden alvast ingevuld. */
 function openNagesprek(nagesprek = null, voorinvullen = {}) {
     nagesprekForm.reset();
+    vulNagesprekRoutes();
     nagesprekBewerkId = nagesprek?.id || null;
     const waarden = nagesprek || { gehouden: voorinvullen.moment === "direct", ...voorinvullen };
     for (const [veld, waarde] of Object.entries(waarden)) {
@@ -2967,6 +2999,11 @@ function openNagesprek(nagesprek = null, voorinvullen = {}) {
         if (el.type === "checkbox") el.checked = !!waarde;
         else el.value = waarde;
     }
+    // Geen (bestaande) route gekozen maar wel een naam, of nog geen routes opgeslagen: dan is het "Zelf typen".
+    if (!nagesprekRouteKeuze.value && (nagesprekForm.elements.wandeling.value.trim() || !opgeslagenRoutes.length)) {
+        nagesprekRouteKeuze.value = ZELF_TYPEN;
+    }
+    werkWandelingVeldBij();
     werkAfspraakVeldenBij();
     btnNagesprekVerwijder.hidden = !nagesprek;
     nagesprekOpname.laad(nagesprek?.geluiden || []);
@@ -3005,6 +3042,8 @@ nagesprekForm.addEventListener("submit", async (e) => {
     const nagesprek = {
         id: nagesprekBewerkId || nieuwId(),
         wandeling: data.wandeling.trim(),
+        routeId: data.routeId === ZELF_TYPEN ? "" : data.routeId || "",
+        metWie: (data.metWie || "").trim(),
         moment: data.moment || "direct",
         datum: later ? data.datum : "",
         tijd: later ? data.tijd : "",
@@ -3101,9 +3140,15 @@ afsluitDialoog.addEventListener("close", () => {
     const naar = routeNaarInput.value.trim();
     btnAfsluitOk.textContent = "Afronden ✓";
     if (afsluitDialoog.returnValue !== "klaar" || !keuze) return;
+    // Is de gelopen route opgeslagen? Dan staat die alvast geselecteerd.
+    const g = huidigeRouteGegevens();
+    const opgeslagen = g && zoekOpgeslagen(g);
     openNagesprek(null, {
         moment: keuze,
-        wandeling: `${new Date().toLocaleDateString("nl-NL", { day: "numeric", month: "short" })}${naar ? ` – naar ${naar}` : ""}`,
+        routeId: opgeslagen?.id || "",
+        wandeling: opgeslagen
+            ? routeNaam(opgeslagen)
+            : `${new Date().toLocaleDateString("nl-NL", { day: "numeric", month: "short" })}${naar ? ` – naar ${naar}` : ""}`,
     });
 });
 
