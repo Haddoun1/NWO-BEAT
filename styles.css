@@ -845,6 +845,8 @@ textarea {
     font-weight: 700;
     font-size: 0.92rem;
     box-shadow: var(--schaduw);
+    /* Zonder max-content wordt de hint door left: 50% half zo breed geperst */
+    width: max-content;
     max-width: calc(100% - 32px);
     animation: plop 0.35s var(--veer);
 }
@@ -1594,11 +1596,14 @@ textarea.ongeldig,
     transform: translateY(-50%) rotate(180deg);
 }
 
-.route-plan-status {
-    margin: 0;
-    font-size: 0.9em;
-    opacity: 0.75;
-    text-align: center;
+.route-plan-knop {
+    width: 100%;
+    padding: 12px;
+}
+
+.route-plan-knop:disabled {
+    opacity: 0.7;
+    cursor: progress;
 }
 
 .route-resultaat {
@@ -1844,9 +1849,24 @@ textarea.ongeldig,
         top: 12px;
         left: 12px;
         right: 12px;
-        bottom: 12px;
+        /* Ruimte onderin laten voor de schaal en de verplichte OpenStreetMap-vermelding */
+        bottom: 30px;
         width: auto;
         justify-content: space-between;
+    }
+
+    /* Minstens 16px: anders zoomt de iPhone in zodra je in een veld tikt */
+    input,
+    select,
+    textarea {
+        font-size: 16px;
+    }
+
+    /* Knoppen bovenaan het paneel, zodat 'Nagesprekken' niet onderin wegvalt */
+    #hoofd-paneel .lijst-titel,
+    #hoofd-paneel .lijst,
+    #hoofd-paneel .leeg {
+        order: 1;
     }
 
     .topbar {
@@ -1861,6 +1881,7 @@ textarea.ongeldig,
 
     .paneel {
         max-height: 42vh;
+        max-height: 42dvh;
     }
 
     .fab {
@@ -1885,6 +1906,7 @@ textarea.ongeldig,
 
     .route-paneel {
         max-height: 52vh;
+        max-height: 52dvh;
     }
 
     /* Tijdens het volgen op mobiel: lijst met stappen inklappen, zodat de kaart groot blijft */
@@ -2634,5 +2656,6 @@ textarea.ongeldig,
 @media (max-width: 760px) {
     .nagesprek-paneel {
         max-height: 52vh;
+        max-height: 52dvh;
     }
 }
