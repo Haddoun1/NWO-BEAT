@@ -1594,11 +1594,14 @@ textarea.ongeldig,
     transform: translateY(-50%) rotate(180deg);
 }
 
-.route-plan-status {
-    margin: 0;
-    font-size: 0.9em;
-    opacity: 0.75;
-    text-align: center;
+.route-plan-knop {
+    width: 100%;
+    padding: 12px;
+}
+
+.route-plan-knop:disabled {
+    opacity: 0.7;
+    cursor: progress;
 }
 
 .route-resultaat {
