@@ -1,4 +1,4 @@
-// NWO BEAT – obstakels op de kaart (Leaflet + OpenStreetMap)
+// Transect Walk – obstakels op de kaart (Leaflet + OpenStreetMap)
 
 // ---------- Instellingen ----------
 
@@ -1970,7 +1970,7 @@ function tekenRoutes() {
     routeLaag.clearLayers();
     routeOpties.forEach((r, i) => {
         if (r === actieveRoute) return;
-        L.polyline(r.coords, { color: "#8d9bbb", weight: 7, opacity: 0.75, bubblingMouseEvents: false })
+        L.polyline(r.coords, { color: "#9a9db0", weight: 7, opacity: 0.75, bubblingMouseEvents: false })
             .bindTooltip(`${formatDuur(r.duur)} · ${formatAfstand(r.afstand)}`, { sticky: true })
             .on("click", () => kiesRoute(i, { zoom: false }))
             .addTo(routeLaag);
@@ -1978,7 +1978,7 @@ function tekenRoutes() {
 
     const r = actieveRoute;
     L.polyline(r.coords, { color: "#fff", weight: 12, interactive: false }).addTo(routeLaag);
-    L.polyline(r.coords, { color: "#0342df", weight: 7, interactive: false }).addTo(routeLaag);
+    L.polyline(r.coords, { color: "#5a5aa0", weight: 7, interactive: false }).addTo(routeLaag);
 
     const punten = r.punten || [{ latlng: L.latLng(r.coords[0]) }, { latlng: L.latLng(r.coords.at(-1)) }];
 
@@ -2473,7 +2473,7 @@ function renderOpgeslagen() {
             const v = VERVOER[r.vervoer] || VERVOER.lopen;
             return `
             <li class="route-item">
-                <button class="lijst-item" type="button" data-route="${r.id}" style="--kleur:#0342df">
+                <button class="lijst-item" type="button" data-route="${r.id}" style="--kleur:#5a5aa0">
                     <span class="lijst-icoon">${v.icoon}</span>
                     <span class="lijst-tekst">
                         <strong>${escapeHtml(routeNaam(r))}</strong>
