@@ -2,9 +2,10 @@
 
 // ---------- Instellingen ----------
 
+// Startpunt van de kaart
 const AMSTERDAM = [52.3676, 4.9041];
-// Gemeente Amsterdam (met een kleine marge): [[zuid, west], [noord, oost]]
-const AMSTERDAM_GRENZEN = [[52.27, 4.72], [52.44, 5.09]];
+// Nederland (met een kleine marge): [[zuid, west], [noord, oost]]
+const NEDERLAND_GRENZEN = [[50.6, 3.2], [53.7, 7.3]];
 const OPSLAG_SLEUTEL = "nwo-beat-meldingen";
 const ROUTES_SLEUTEL = "nwo-beat-routes";
 
@@ -114,9 +115,9 @@ bevestigDialoog.addEventListener("click", (e) => {
 
 const map = L.map("map", {
     zoomControl: false,
-    maxBounds: AMSTERDAM_GRENZEN,
-    maxBoundsViscosity: 1.0, // niet buiten Amsterdam kunnen slepen
-    minZoom: 11,
+    maxBounds: NEDERLAND_GRENZEN,
+    maxBoundsViscosity: 1.0, // niet buiten Nederland kunnen slepen
+    minZoom: 7,
 }).setView(AMSTERDAM, 12);
 L.control.zoom({ position: "topright", zoomInTitle: "Inzoomen", zoomOutTitle: "Uitzoomen" }).addTo(map);
 
@@ -1269,7 +1270,9 @@ const plekCache = new Map(); // zoekterm -> resultaat
 async function zoekPlek(zoekterm) {
     const sleutel = zoekterm.toLowerCase();
     if (plekCache.has(sleutel)) return plekCache.get(sleutel);
-    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=nl&viewbox=${AMSTERDAM_GRENZEN[0][1]},${AMSTERDAM_GRENZEN[1][0]},${AMSTERDAM_GRENZEN[1][1]},${AMSTERDAM_GRENZEN[0][0]}&bounded=1&q=${encodeURIComponent(zoekterm)}`;
+    // Alleen in Nederland zoeken; plekken in het huidige kaartbeeld krijgen voorrang
+    const b = map.getBounds();
+    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=nl&viewbox=${b.getWest()},${b.getNorth()},${b.getEast()},${b.getSouth()}&q=${encodeURIComponent(zoekterm)}`;
     const antwoord = await fetchMetTimeout(url, 10_000, { headers: { "Accept-Language": "nl" } });
     const resultaten = await antwoord.json();
     const plek = resultaten[0] || null;
@@ -1285,7 +1288,7 @@ document.getElementById("zoek-form").addEventListener("submit", async (e) => {
     try {
         const plek = await zoekPlek(zoekterm);
         if (!plek) {
-            toast(`Geen plek in Amsterdam gevonden voor "${zoekterm}". Probeer een andere schrijfwijze.`, "info");
+            toast(`Geen plek in Nederland gevonden voor "${zoekterm}". Probeer een andere schrijfwijze.`, "info");
             return;
         }
         const { lat, lon, boundingbox, display_name } = plek;
@@ -1348,7 +1351,8 @@ function beschrijfPlek(f) {
 async function haalSuggesties(tekst, signal) {
     const sleutel = tekst.toLowerCase();
     if (suggestieCache.has(sleutel)) return suggestieCache.get(sleutel);
-    const [[zuid, west], [noord, oost]] = AMSTERDAM_GRENZEN;
+    // Alleen Nederland; resultaten dicht bij jou of het kaartmidden komen eerst
+    const [[zuid, west], [noord, oost]] = NEDERLAND_GRENZEN;
     const midden = mijnLocatie || map.getCenter();
     const url =
         `https://photon.komoot.io/api/?q=${encodeURIComponent(tekst)}&limit=8` +
@@ -1360,6 +1364,7 @@ async function haalSuggesties(tekst, signal) {
     // Dubbele resultaten (bijv. een straat die uit meerdere stukken bestaat) maar één keer tonen
     const gezien = new Set();
     const resultaten = features
+        .filter((f) => f.properties?.countrycode === "NL")
         .map(beschrijfPlek)
         .filter((r) => {
             const sleutel = `${r.titel}|${r.details}`;
@@ -1772,7 +1777,7 @@ async function bepaalPunt(veld, input) {
     const plek = await zoekPlek(tekst);
     if (!plek) {
         input.focus();
-        throw gebruikersFout(`Geen plek gevonden voor "${tekst}". Probeer een andere schrijfwijze.`);
+        throw gebruikersFout(`Geen plek in Nederland gevonden voor "${tekst}". Probeer een andere schrijfwijze.`);
     }
     const latlng = L.latLng(plek.lat, plek.lon);
     routePunten[veld] = { latlng, label: tekst };
@@ -1787,7 +1792,7 @@ async function bepaalStop(stop) {
     const plek = await zoekPlek(tekst);
     if (!plek) {
         stop.input.focus();
-        throw gebruikersFout(`Geen plek gevonden voor tussenstop "${tekst}". Probeer een andere schrijfwijze.`);
+        throw gebruikersFout(`Geen plek in Nederland gevonden voor tussenstop "${tekst}". Probeer een andere schrijfwijze.`);
     }
     stop.punt = { latlng: L.latLng(plek.lat, plek.lon), label: tekst };
     return stop.punt.latlng;
