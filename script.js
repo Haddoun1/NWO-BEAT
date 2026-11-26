@@ -669,6 +669,19 @@ map.on("popupclose", (e) => {
     e.popup.getElement()?.querySelectorAll("audio[src^='blob:']").forEach((a) => URL.revokeObjectURL(a.src));
 });
 
+// Op mobiel: tijdens een open popup het paneel en de zwevende knoppen verbergen,
+// en de kaart zo verschuiven dat de popup onder de topbar past.
+const isMobiel = () => matchMedia("(max-width: 760px)").matches;
+map.on("popupopen", (e) => {
+    if (!isMobiel()) return;
+    document.body.classList.add("popup-open");
+    const onderkantTopbar = document.querySelector(".topbar").getBoundingClientRect().bottom;
+    e.popup.options.autoPanPaddingTopLeft = L.point(12, onderkantTopbar + 12);
+    e.popup.options.autoPanPaddingBottomRight = L.point(12, 16);
+    e.popup.update(); // opnieuw schuiven met de nieuwe marges
+});
+map.on("popupclose", () => document.body.classList.remove("popup-open"));
+
 // ---------- Filters ----------
 
 // Impact-keuze (1 t/m 5) in het formulier

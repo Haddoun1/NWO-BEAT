@@ -1872,6 +1872,21 @@ textarea.ongeldig,
 /* ---------- Mobiel ---------- */
 
 @media (max-width: 760px) {
+    /* Popup open: paneel en zwevende knoppen even weg, zodat de popup de ruimte heeft */
+    body.popup-open .zijkolom > .paneel,
+    body.popup-open .fab,
+    body.popup-open .locatie-knop {
+        display: none !important;
+    }
+
+    /* Popup nooit hoger dan het scherm onder de topbar; langere inhoud scrollt */
+    .leaflet-popup-content {
+        max-height: calc(100vh - 210px);
+        max-height: calc(100dvh - 210px);
+        overflow-y: auto;
+        margin: 12px 14px;
+    }
+
     .zijkolom {
         top: 12px;
         left: 12px;
