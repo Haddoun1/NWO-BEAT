@@ -1,33 +1,41 @@
 /* =========================================================
-   NWO BEAT – speelse, moderne stijl
+   Transect Walk – huisstijl
    ========================================================= */
 
 :root {
-    /* INK huisstijl (www.ink.team) */
-    --ink-blauw: #0342df;
-    --midnight: #051736;
-    --lavendel: #e9efff;
-    --licht-blauw: #e4f7f7;
-    --licht-grijs: #f9f9fa;
-    --ink-roze: #ff94e1;
-    --ink-oranje: #ff6631;
+    /* Transect Walk huisstijl */
+    --tw-oranje: #e6500a;
+    --tw-geel: #fabe1e;
+    --tw-creme: #fff5f0;
+    --tw-lichtblauw: #bec8f0;
+    --tw-donkerblauw: #1e2850;
+    --tw-paars: #5a5aa0;
+
+    /* Oude namen, gekoppeld aan de nieuwe kleuren */
+    --ink-blauw: var(--tw-paars);
+    --midnight: var(--tw-donkerblauw);
+    --lavendel: #e6e9f9;
+    --licht-blauw: var(--tw-lichtblauw);
+    --licht-grijs: var(--tw-creme);
+    --ink-roze: var(--tw-geel);
+    --ink-oranje: var(--tw-oranje);
 
     --tekst: var(--midnight);
-    --grijs: #56627c;
-    --zacht: var(--licht-grijs);
-    --veld: #f2f5fd;
-    --rand: #e1e6f3;
-    --paars: var(--ink-blauw);
-    --paars-donker: #0233b0;
+    --grijs: #545b78;
+    --zacht: var(--tw-creme);
+    --veld: #fcefe8;
+    --rand: #e8dcd6;
+    --paars: var(--tw-paars);
+    --paars-donker: #46468a;
     --roze: var(--ink-roze);
-    --verloop: linear-gradient(249deg, #1b53cf, #094ee7);
+    --verloop: linear-gradient(249deg, #5a5aa0, #46468a);
     --actief: #1f9d6b;
-    --gepland: var(--ink-blauw);
-    --verlopen: #9aa3b5;
-    --gevaar: #e5294a;
+    --gepland: var(--tw-paars);
+    --verlopen: #9a9db0;
+    --gevaar: #d4213f;
     --radius: 20px;
-    --schaduw: 0 12px 32px rgba(5, 23, 54, 0.14), 0 2px 6px rgba(5, 23, 54, 0.06);
-    --schaduw-klein: 0 4px 14px rgba(5, 23, 54, 0.1);
+    --schaduw: 0 12px 32px rgba(30, 40, 80, 0.14), 0 2px 6px rgba(30, 40, 80, 0.06);
+    --schaduw-klein: 0 4px 14px rgba(30, 40, 80, 0.1);
     --veer: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
@@ -39,7 +47,7 @@ html,
 body {
     height: 100%;
     margin: 0;
-    font-family: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-family: "Inclusive Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
     color: var(--tekst);
     background: var(--zacht);
     -webkit-font-smoothing: antialiased;
@@ -103,7 +111,7 @@ body {
 }
 
 .kaart-blok {
-    background: rgba(255, 255, 255, 0.92);
+    background: rgba(255, 255, 255, 0.94);
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
     border-radius: var(--radius);
@@ -113,41 +121,34 @@ body {
 /* ---------- Topbar ---------- */
 
 .topbar {
+    position: relative;
+    overflow: hidden;
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 12px 16px;
+    padding: 22px 18px 46px;
+    background: var(--veld);
 }
 
-.logo {
-    width: 46px;
-    height: 46px;
-    flex-shrink: 0;
-    display: grid;
-    place-items: center;
-    font-size: 24px;
-    border-radius: 14px;
-    background: var(--lavendel);
-    transition: transform 0.3s var(--veer);
-}
-
-.topbar:hover .logo {
-    transform: rotate(-6deg) scale(1.06);
+.merk {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
 }
 
 .merk h1 {
     margin: 0;
-    font-size: 1.3rem;
-    font-weight: 600;
-    letter-spacing: -0.01em;
-    color: var(--midnight);
+    font-size: 1.7rem;
+    font-weight: 700;
+    line-height: 0.85;
+    letter-spacing: -0.03em;
+    color: var(--tw-donkerblauw);
+    text-transform: lowercase;
 }
 
-/* De haakjes uit het INK-logo */
-.haak {
-    color: var(--ink-blauw);
-    font-weight: 500;
-    margin: 0 1px;
+.merk h1 span {
+    display: block;
 }
 
 .subtitle {
@@ -155,6 +156,24 @@ body {
     font-weight: 600;
     color: var(--grijs);
 }
+
+/* Huisstijl-element: kleurblokken op verschillende hoogtes met oranje hellingen (1:12) */
+.helling {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: auto;
+    display: block;
+    pointer-events: none;
+}
+
+.helling .h-oranje { fill: var(--tw-oranje); }
+.helling .h-geel { fill: var(--tw-geel); }
+.helling .h-donker { fill: var(--tw-donkerblauw); }
+.helling .h-paars { fill: var(--tw-paars); }
+.helling .h-licht { fill: var(--tw-lichtblauw); }
 
 /* ---------- Paneel ---------- */
 
@@ -303,10 +322,16 @@ body {
     padding: 12px;
     border: 2px solid transparent;
     border-radius: 18px;
-    background: #fff;
-    box-shadow: 0 2px 8px rgba(5, 23, 54, 0.07);
+    background: var(--veld);
+    box-shadow: 0 2px 8px rgba(30, 40, 80, 0.07);
     cursor: pointer;
     transition: transform 0.2s var(--veer), box-shadow 0.2s, border-color 0.2s;
+}
+
+/* Tags zonder eigen kleur oranje, anders vallen ze weg tegen het beige */
+.lijst-item .tag:not([class*="tag-"]) {
+    background: var(--tw-oranje);
+    color: #fff;
 }
 
 .lijst-item:hover {
@@ -362,7 +387,7 @@ body {
 
 .tag-actief { background: color-mix(in srgb, var(--actief) 16%, white); color: #16784f; }
 .tag-gepland { background: color-mix(in srgb, var(--gepland) 16%, white); color: var(--paars-donker); }
-.tag-verlopen { background: #eef0f5; color: var(--verlopen); }
+.tag-verlopen { background: #efeae8; color: var(--verlopen); }
 .tag-ernst { background: color-mix(in srgb, var(--kleur) 18%, white); color: color-mix(in srgb, var(--kleur) 70%, black); }
 
 .leeg {
@@ -432,17 +457,17 @@ body {
 .locatie-knop:focus-visible,
 .foto-tegel:focus-visible,
 .toast-sluit:focus-visible {
-    box-shadow: 0 0 0 4px rgba(3, 66, 223, 0.35);
+    box-shadow: 0 0 0 4px rgba(90, 90, 160, 0.35);
 }
 
 .btn-primary {
     background: var(--verloop);
     color: #fff;
-    box-shadow: 0 6px 16px rgba(3, 66, 223, 0.35);
+    box-shadow: 0 6px 16px rgba(90, 90, 160, 0.35);
 }
 
 .btn-primary:hover {
-    box-shadow: 0 8px 22px rgba(3, 66, 223, 0.5);
+    box-shadow: 0 8px 22px rgba(90, 90, 160, 0.5);
 }
 
 .btn-licht {
@@ -499,14 +524,14 @@ body {
     font-weight: 700;
     color: #fff;
     background: var(--verloop);
-    box-shadow: 0 12px 28px rgba(3, 66, 223, 0.5);
+    box-shadow: 0 12px 28px rgba(90, 90, 160, 0.5);
     cursor: pointer;
     transition: transform 0.25s var(--veer), box-shadow 0.25s;
 }
 
 .fab:hover {
     transform: translateY(-3px) scale(1.04);
-    box-shadow: 0 16px 36px rgba(3, 66, 223, 0.6);
+    box-shadow: 0 16px 36px rgba(90, 90, 160, 0.6);
 }
 
 .fab:active {
@@ -621,7 +646,7 @@ textarea {
 
 input::placeholder,
 textarea::placeholder {
-    color: #98a2b8;
+    color: #9a9db0;
 }
 
 input:focus,
@@ -630,7 +655,7 @@ textarea:focus {
     outline: none;
     background: #fff;
     border-color: var(--paars);
-    box-shadow: 0 0 0 4px rgba(3, 66, 223, 0.15);
+    box-shadow: 0 0 0 4px rgba(90, 90, 160, 0.15);
 }
 
 textarea {
@@ -694,7 +719,7 @@ textarea {
 
 .leaflet-popup-content {
     margin: 14px 16px;
-    font-family: "Figtree", system-ui, sans-serif;
+    font-family: "Inclusive Sans", system-ui, sans-serif;
     font-size: 0.9rem;
     line-height: 1.45;
 }
@@ -801,6 +826,8 @@ textarea {
     display: flex;
     flex-direction: column;
     gap: 6px;
+    /* Ruimte bovenin, zodat het sluitkruisje niet over de eerste knop valt */
+    padding-top: 22px;
 }
 
 .popup-knoppen-stapel p {
@@ -877,7 +904,7 @@ textarea {
     border: none;
     border-radius: 28px;
     color: var(--tekst);
-    box-shadow: 0 24px 60px rgba(5, 23, 54, 0.35);
+    box-shadow: 0 24px 60px rgba(30, 40, 80, 0.35);
     overflow: hidden;
 }
 
@@ -888,7 +915,7 @@ textarea {
 }
 
 .dialoog::backdrop {
-    background: rgba(5, 23, 54, 0.45);
+    background: rgba(30, 40, 80, 0.45);
     backdrop-filter: blur(4px);
 }
 
@@ -1000,7 +1027,7 @@ textarea {
     border-radius: 50%;
     background: #fff;
     color: var(--paars);
-    box-shadow: 0 2px 8px rgba(5, 23, 54, 0.15);
+    box-shadow: 0 2px 8px rgba(30, 40, 80, 0.15);
     cursor: pointer;
     transition: transform 0.2s var(--veer), background 0.2s;
 }
@@ -1176,7 +1203,7 @@ textarea {
     font-size: 0.76rem;
     font-weight: 600;
     color: var(--grijs);
-    border: 2px dashed #c5cfe8;
+    border: 2px dashed var(--tw-lichtblauw);
     border-radius: 18px;
     background: transparent;
     cursor: pointer;
@@ -1264,7 +1291,7 @@ textarea {
 }
 
 .lightbox::backdrop {
-    background: rgba(5, 23, 54, 0.85);
+    background: rgba(30, 40, 80, 0.85);
     backdrop-filter: blur(6px);
 }
 
@@ -1313,7 +1340,7 @@ textarea {
     border-radius: 18px;
     background: var(--tekst);
     color: #fff;
-    box-shadow: 0 14px 34px rgba(5, 23, 54, 0.35);
+    box-shadow: 0 14px 34px rgba(30, 40, 80, 0.35);
     animation: toast-in 0.4s var(--veer);
 }
 
@@ -1345,7 +1372,7 @@ textarea {
 .toast-fout .toast-icoon { background: color-mix(in srgb, var(--gevaar) 40%, transparent); }
 
 .toast-fout {
-    background: linear-gradient(135deg, #3b1430, var(--midnight));
+    background: linear-gradient(135deg, #5a1a2a, var(--midnight));
 }
 
 .toast-tekst {
@@ -1870,13 +1897,24 @@ textarea.ongeldig,
     }
 
     .topbar {
-        padding: 10px 12px;
+        padding: 16px 14px 42px;
     }
 
-    .logo {
-        width: 40px;
-        height: 40px;
-        font-size: 20px;
+    /* Op mobiel het woordmerk op één regel, zodat de topbar laag blijft */
+    .merk {
+        gap: 4px;
+    }
+
+    .merk h1 {
+        font-size: 1.35rem;
+    }
+
+    .merk h1 span {
+        display: inline;
+    }
+
+    .merk h1 span + span {
+        margin-left: 0.25em;
     }
 
     .paneel {
@@ -1885,7 +1923,7 @@ textarea.ongeldig,
     }
 
     .fab {
-        top: 84px;
+        top: 112px;
         bottom: auto;
         right: 12px;
         padding: 10px 16px 10px 12px;
@@ -1897,7 +1935,7 @@ textarea.ongeldig,
     }
 
     .locatie-knop {
-        top: 148px;
+        top: 176px;
         bottom: auto;
         right: 12px;
         width: 46px;
@@ -1917,7 +1955,7 @@ textarea.ongeldig,
     }
 
     .plaats-hint {
-        top: 84px;
+        top: 112px;
     }
 
     .impact-emoji {
@@ -2365,7 +2403,7 @@ textarea.ongeldig,
 }
 
 .keuze-kaart input:focus-visible + span {
-    box-shadow: 0 0 0 4px rgba(3, 66, 223, 0.15);
+    box-shadow: 0 0 0 4px rgba(90, 90, 160, 0.15);
 }
 
 .voet-links {
@@ -2616,6 +2654,15 @@ textarea.ongeldig,
 }
 
 /* ---------- Nagesprekken ---------- */
+
+#btn-nagesprekken {
+    background: var(--tw-lichtblauw);
+    color: var(--tw-donkerblauw);
+}
+
+#btn-nagesprekken:hover {
+    background: color-mix(in srgb, var(--tw-lichtblauw) 85%, var(--tw-paars));
+}
 
 #btn-nagesprekken .aantal {
     margin-left: 2px;

@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NWO BEAT</title>
+    <title>Transect Walk</title>
 
     <!-- Lettertype -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inclusive+Sans:ital,wght@0,300..700;1,300..700&display=swap" rel="stylesheet">
 
     <!-- Leaflet (gratis kaartbibliotheek) -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -20,11 +20,18 @@
 
     <div class="zijkolom">
         <header class="kaart-blok topbar">
-            <div class="logo" aria-hidden="true">🚧</div>
             <div class="merk">
-                <h1><span class="haak">(</span>NWO BEAT<span class="haak">)</span></h1>
+                <h1 aria-label="Transect Walk"><span>transect</span><span>walk</span></h1>
                 <span class="subtitle">Tijdelijke blokkades in kaart</span>
             </div>
+            <svg class="helling" viewBox="0 0 493 48" aria-hidden="true" focusable="false">
+                <polygon class="h-oranje" points="71,18 253,2 253,18" />
+                <polygon class="h-oranje" points="367,3 481,12 367,12" />
+                <rect class="h-geel" x="0" y="18" width="141" height="30" />
+                <rect class="h-donker" x="143" y="18" width="110" height="30" />
+                <rect class="h-paars" x="255" y="2" width="110" height="46" />
+                <rect class="h-licht" x="367" y="12" width="126" height="36" />
+            </svg>
         </header>
 
         <aside id="hoofd-paneel" class="kaart-blok paneel">
